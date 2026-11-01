@@ -51,7 +51,8 @@ def test_duplicate_items_in_same_order_payload(client, app):
     # Aggregated to single line item with quantity 5
     assert len(order["items"]) == 1
     assert order["items"][0]["quantity"] == 5
-    assert order["items"][0]["line_total"] == round(89.99 * 5, 2)
+    assert order["items"][0]["line_total"] == round(6999.0 * 5, 2)
+    assert order["currency"] == "INR"
 
     with app.app_context():
         updated_stock = db.session.get(Product, 1).stock_quantity
@@ -190,7 +191,7 @@ def test_product_query_edge_cases(client):
     assert r1.get_json()["count"] >= 10
 
     # min_price exceeding all items returns 0 products
-    r2 = client.get("/api/products?min_price=10000")
+    r2 = client.get("/api/products?min_price=100000")
     assert r2.status_code == 200
     assert r2.get_json()["count"] == 0
 

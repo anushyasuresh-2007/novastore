@@ -1,5 +1,6 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { formatCurrency } from "../src/utils/currency.js";
 
 // Mock localStorage for headless Node environment
 class MockLocalStorage {
@@ -28,7 +29,7 @@ describe("Shopping Cart Logic & State Tests", () => {
   const sampleProduct1 = {
     id: 1,
     name: "Ultra-Slim Wireless Mechanical Keyboard",
-    price: 89.99,
+    price: 6999,
     stock_quantity: 5,
     category: "Electronics",
   };
@@ -36,15 +37,23 @@ describe("Shopping Cart Logic & State Tests", () => {
   const sampleProduct2 = {
     id: 2,
     name: "Precision Ergonomic Optical Mouse",
-    price: 49.50,
+    price: 3799,
     stock_quantity: 10,
     category: "Electronics",
+  };
+
+  const sampleLowCostProduct = {
+    id: 99,
+    name: "Sample Replacement Keycaps",
+    price: 499,
+    stock_quantity: 10,
+    category: "Accessories",
   };
 
   const outOfStockProduct = {
     id: 3,
     name: "Sold Out Headphones",
-    price: 199.99,
+    price: 14999,
     stock_quantity: 0,
     category: "Audio",
   };
@@ -92,7 +101,7 @@ describe("Shopping Cart Logic & State Tests", () => {
 
   const computeTotals = () => {
     const subtotal = cartItems.reduce((acc, i) => acc + i.price * i.quantity, 0);
-    const deliveryFee = cartItems.length === 0 ? 0 : subtotal >= 100 ? 0 : 5.0;
+    const deliveryFee = cartItems.length === 0 ? 0 : subtotal >= 999 ? 0 : 99.0;
     const totalAmount = subtotal + deliveryFee;
     return {
       subtotal: Number(subtotal.toFixed(2)),
@@ -154,19 +163,27 @@ describe("Shopping Cart Logic & State Tests", () => {
   });
 
   it("should calculate subtotal, delivery fee and totals correctly", () => {
-    // Under $100: 1 mouse ($49.50) -> delivery fee is $5.00
-    addToCart(sampleProduct2, 1);
+    // Under ₹999: 1 keycap set (₹499) -> delivery fee is ₹99.00
+    addToCart(sampleLowCostProduct, 1);
     let totals = computeTotals();
-    assert.equal(totals.subtotal, 49.50);
-    assert.equal(totals.deliveryFee, 5.00);
-    assert.equal(totals.totalAmount, 54.50);
+    assert.equal(totals.subtotal, 499.00);
+    assert.equal(totals.deliveryFee, 99.00);
+    assert.equal(totals.totalAmount, 598.00);
 
-    // Over $100: 1 keyboard ($89.99) + 1 mouse ($49.50) = $139.49 -> free delivery
+    // Over ₹999: 1 keyboard (₹6999) + 1 keycap set (₹499) = ₹7498 -> free delivery
     addToCart(sampleProduct1, 1);
     totals = computeTotals();
-    assert.equal(totals.subtotal, 139.49);
+    assert.equal(totals.subtotal, 7498.00);
     assert.equal(totals.deliveryFee, 0.00);
-    assert.equal(totals.totalAmount, 139.49);
+    assert.equal(totals.totalAmount, 7498.00);
+  });
+
+  it("should format currency properly for INR and historical USD", () => {
+    assert.equal(formatCurrency(6999, "INR"), "₹6,999");
+    assert.equal(formatCurrency(74999, "INR"), "₹74,999");
+    assert.equal(formatCurrency(999, "INR"), "₹999");
+    assert.equal(formatCurrency(94.99, "USD"), "$94.99");
+    assert.equal(formatCurrency(899.00, "USD"), "$899.00");
   });
 
   it("should remove individual items and clear cart", () => {

@@ -4,6 +4,7 @@ import {
   fetchAdminOrderById,
   updateAdminOrderStatus,
 } from "../../services/adminApi";
+import { formatCurrency } from "../../utils/currency";
 
 const STATUS_OPTIONS = ["ALL", "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"];
 
@@ -243,7 +244,7 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
                       </span>
                     </td>
                     <td>
-                      <strong className="order-total-price">${ord.total_amount.toFixed(2)}</strong>
+                      <strong className="order-total-price">{formatCurrency(ord.total_amount, ord.currency || "USD")}</strong>
                     </td>
                     <td>
                       <span className={`status-badge ${getStatusBadgeClass(ord.status)}`}>
@@ -367,10 +368,10 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
                             <strong>{item.product_name}</strong>
                             <div className="subtext">Product ID #{item.product_id}</div>
                           </td>
-                          <td style={{ textAlign: "right" }}>${item.unit_price.toFixed(2)}</td>
+                          <td style={{ textAlign: "right" }}>{formatCurrency(item.unit_price, item.currency || selectedOrder.currency)}</td>
                           <td style={{ textAlign: "center" }}>{item.quantity}</td>
                           <td style={{ textAlign: "right" }}>
-                            <strong>${item.line_total.toFixed(2)}</strong>
+                            <strong>{formatCurrency(item.line_total, item.currency || selectedOrder.currency)}</strong>
                           </td>
                         </tr>
                       ))}
@@ -382,17 +383,17 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
                 <div className="admin-order-totals-box">
                   <div className="order-total-row">
                     <span>Subtotal:</span>
-                    <span>${selectedOrder.subtotal.toFixed(2)}</span>
+                    <span>{formatCurrency(selectedOrder.subtotal, selectedOrder.currency)}</span>
                   </div>
                   <div className="order-total-row">
                     <span>Delivery Fee:</span>
                     <span>
-                      {selectedOrder.delivery_fee === 0 ? "FREE" : `$${selectedOrder.delivery_fee.toFixed(2)}`}
+                      {selectedOrder.delivery_fee === 0 ? "FREE" : formatCurrency(selectedOrder.delivery_fee, selectedOrder.currency)}
                     </span>
                   </div>
                   <div className="order-total-row total-highlight">
                     <span>Grand Total:</span>
-                    <span>${selectedOrder.total_amount.toFixed(2)}</span>
+                    <span>{formatCurrency(selectedOrder.total_amount, selectedOrder.currency)}</span>
                   </div>
                 </div>
               </div>

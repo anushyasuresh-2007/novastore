@@ -87,7 +87,7 @@ export default function FilterBar({
 
         <form className="price-filter-group" onSubmit={handlePriceSubmit}>
           <div className="price-input-wrapper">
-            <span className="currency-symbol">$</span>
+            <span className="currency-symbol">₹</span>
             <input
               type="number"
               min="0"
@@ -100,7 +100,7 @@ export default function FilterBar({
           </div>
           <span style={{ color: "var(--gray-400)" }}>–</span>
           <div className="price-input-wrapper">
-            <span className="currency-symbol">$</span>
+            <span className="currency-symbol">₹</span>
             <input
               type="number"
               min="0"

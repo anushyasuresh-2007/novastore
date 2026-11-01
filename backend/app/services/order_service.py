@@ -143,11 +143,12 @@ class OrderService:
                 unit_price=unit_price,      # Purchase-time snapshot
                 quantity=requested_qty,
                 line_total=line_total,
+                currency=product.currency or "INR",
             )
             order_items_to_create.append(order_item)
 
-        # Apply delivery rules: free if subtotal >= 100, otherwise $5.00
-        delivery_fee = 0.0 if subtotal >= 100.0 else 5.0
+        # Apply delivery rules: free if subtotal >= 999, otherwise 99.0
+        delivery_fee = 0.0 if subtotal >= 999.0 else 99.0
         total_amount = round(subtotal + delivery_fee, 2)
 
         # 5. Create Order object
@@ -163,6 +164,7 @@ class OrderService:
             subtotal=subtotal,
             delivery_fee=delivery_fee,
             total_amount=total_amount,
+            currency="INR",
             status="CONFIRMED",
         )
 

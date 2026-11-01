@@ -6,6 +6,7 @@ import {
   deleteAdminProduct,
 } from "../../services/adminApi";
 import { fetchCategories } from "../../services/api";
+import { formatCurrency } from "../../utils/currency";
 
 const EMPTY_FORM = {
   name: "",
@@ -321,7 +322,7 @@ export default function AdminProductsPage() {
                       <span className="category-tag">{p.category}</span>
                     </td>
                     <td>
-                      <strong className="product-price-val">${p.price.toFixed(2)}</strong>
+                      <strong className="product-price-val">{formatCurrency(p.price, p.currency || "INR")}</strong>
                     </td>
                     <td>
                       <div className="admin-stock-control">
@@ -435,16 +436,16 @@ export default function AdminProductsPage() {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="prod-price">Price ($ USD) *</label>
+                  <label htmlFor="prod-price">Price (₹ INR) *</label>
                   <input
                     id="prod-price"
                     type="number"
-                    step="0.01"
+                    step="1"
                     min="0"
                     className="admin-input"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    placeholder="e.g. 49.99"
+                    placeholder="e.g. 2499"
                     required
                   />
                   {formErrors.price && <span className="field-error">{formErrors.price}</span>}

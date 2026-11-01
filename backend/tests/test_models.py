@@ -23,6 +23,7 @@ def test_product_model_creation(app, db_session):
         d = p.to_dict()
         assert d["name"] == "Mechanical Keyboard"
         assert d["price"] == 99.99
+        assert d["currency"] == "INR"
         assert d["stock_quantity"] == 15
         assert d["created_at"] is not None
 
@@ -97,7 +98,9 @@ def test_order_and_order_item_snapshot(app, db_session):
 
         order_dict = refreshed_order.to_dict(include_items=True)
         assert order_dict["customer_name"] == "Jane Doe"
+        assert order_dict["currency"] == "INR"
         assert order_dict["items"][0]["product_name"] == "Wireless Mouse"
+        assert order_dict["items"][0]["currency"] == "INR"
         assert order_dict["items"][0]["unit_price"] == 39.99
         assert order_dict["items"][0]["quantity"] == 2
         assert order_dict["items"][0]["line_total"] == 79.98

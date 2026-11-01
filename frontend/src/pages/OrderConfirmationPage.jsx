@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useCart } from "../context/CartContext";
+import { formatCurrency } from "../utils/currency";
 
 export default function OrderConfirmationPage() {
   const { confirmedOrder, goToCatalog } = useCart();
@@ -166,13 +167,13 @@ export default function OrderConfirmationPage() {
                     <span className="item-sku">Item ID: #{item.product_id}</span>
                   </div>
                   <div style={{ textAlign: "center" }}>
-                    ${Number(item.unit_price).toFixed(2)}
+                    {formatCurrency(item.unit_price, item.currency || confirmedOrder.currency)}
                   </div>
                   <div style={{ textAlign: "center" }}>
                     {item.quantity}
                   </div>
                   <div style={{ textAlign: "right", fontWeight: "600" }}>
-                    ${Number(item.line_total).toFixed(2)}
+                    {formatCurrency(item.line_total, item.currency || confirmedOrder.currency)}
                   </div>
                 </div>
               ))}
@@ -183,18 +184,18 @@ export default function OrderConfirmationPage() {
           <div className="confirmation-totals-box">
             <div className="summary-row">
               <span className="summary-label">Items Subtotal:</span>
-              <span className="summary-value">${Number(confirmedOrder.subtotal).toFixed(2)}</span>
+              <span className="summary-value">{formatCurrency(confirmedOrder.subtotal, confirmedOrder.currency)}</span>
             </div>
             <div className="summary-row">
               <span className="summary-label">Delivery Charges:</span>
               <span className="summary-value">
-                {Number(confirmedOrder.delivery_fee) === 0 ? "Free" : `$${Number(confirmedOrder.delivery_fee).toFixed(2)}`}
+                {Number(confirmedOrder.delivery_fee) === 0 ? "Free" : formatCurrency(confirmedOrder.delivery_fee, confirmedOrder.currency)}
               </span>
             </div>
             <div className="summary-divider"></div>
             <div className="summary-row total-row">
               <span className="summary-total-label">Final Amount Paid:</span>
-              <span className="summary-total-value">${Number(confirmedOrder.total_amount).toFixed(2)}</span>
+              <span className="summary-total-value">{formatCurrency(confirmedOrder.total_amount, confirmedOrder.currency)}</span>
             </div>
           </div>
         </div>

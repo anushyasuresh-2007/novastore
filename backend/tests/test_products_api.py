@@ -59,11 +59,11 @@ def test_filter_products_by_category_case_insensitive(client):
 
 def test_filter_products_by_price_range(client):
     """Test filtering by min_price and max_price."""
-    response = client.get("/api/products?min_price=40&max_price=80")
+    response = client.get("/api/products?min_price=2000&max_price=6000")
     assert response.status_code == 200
     data = response.get_json()
     assert data["count"] > 0
-    assert all(40 <= p["price"] <= 80 for p in data["products"])
+    assert all(2000 <= p["price"] <= 6000 for p in data["products"])
 
 
 def test_sort_products_price_asc(client):
@@ -104,13 +104,13 @@ def test_sort_products_name_desc(client):
 
 def test_combined_filters_and_sort(client):
     """Test combining category, price range, and sort order."""
-    response = client.get("/api/products?category=Electronics&min_price=30&max_price=100&sort=price_asc")
+    response = client.get("/api/products?category=Electronics&min_price=2000&max_price=7000&sort=price_asc")
     assert response.status_code == 200
     data = response.get_json()
     assert data["count"] > 0
     for p in data["products"]:
         assert p["category"] == "Electronics"
-        assert 30 <= p["price"] <= 100
+        assert 2000 <= p["price"] <= 7000
     prices = [p["price"] for p in data["products"]]
     assert prices == sorted(prices)
 

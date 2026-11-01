@@ -167,9 +167,9 @@ export function CartProvider({ children }) {
   );
 
   /**
-   * Delivery fee logic: Free if subtotal >= 100, otherwise $5.00 flat fee (or $0 if cart empty).
+   * Delivery fee logic: Free if subtotal >= 999, otherwise ₹99 flat fee (or ₹0 if cart empty).
    */
-  const deliveryFee = cartItems.length === 0 ? 0 : subtotal >= 100 ? 0 : 5.0;
+  const deliveryFee = cartItems.length === 0 ? 0 : subtotal >= 999 ? 0 : 99.0;
 
   /**
    * Final total amount estimate.

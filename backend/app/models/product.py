@@ -12,6 +12,7 @@ class Product(db.Model):
     description = db.Column(db.Text, nullable=False)
     category = db.Column(db.String(50), nullable=False, index=True)
     price = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(3), nullable=False, default="INR")
     stock_quantity = db.Column(db.Integer, nullable=False, default=0)
     image_path = db.Column(db.String(255), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
@@ -41,6 +42,7 @@ class Product(db.Model):
             "description": self.description,
             "category": self.category,
             "price": round(float(self.price), 2),
+            "currency": self.currency or "INR",
             "stock_quantity": int(self.stock_quantity),
             "image_path": self.image_path,
             "is_active": bool(self.is_active if self.is_active is not None else True),

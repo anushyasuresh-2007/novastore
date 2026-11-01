@@ -1,5 +1,6 @@
 import React from "react";
 import { useCart } from "../context/CartContext";
+import { formatCurrency } from "../utils/currency";
 
 export default function CartPage() {
   const {
@@ -99,7 +100,7 @@ export default function CartPage() {
                     <div className="cart-item-meta">
                       <span className="cart-item-category">{item.category}</span>
                       <h3 className="cart-item-name">{item.name}</h3>
-                      <span className="cart-item-unit-price">${Number(item.price).toFixed(2)} each</span>
+                      <span className="cart-item-unit-price">{formatCurrency(item.price, item.currency)} each</span>
                       <span className="cart-item-stock-hint">
                         {item.stock_quantity} available in stock
                       </span>
@@ -148,7 +149,7 @@ export default function CartPage() {
 
                   {/* Line Total */}
                   <div className="cart-item-total">
-                    <span className="cart-item-line-price">${lineTotal}</span>
+                    <span className="cart-item-line-price">{formatCurrency(item.price * item.quantity, item.currency)}</span>
                   </div>
                 </div>
               );
@@ -163,7 +164,7 @@ export default function CartPage() {
 
             <div className="summary-row">
               <span className="summary-label">Items Subtotal</span>
-              <span className="summary-value">${subtotal.toFixed(2)}</span>
+              <span className="summary-value">{formatCurrency(subtotal)}</span>
             </div>
 
             <div className="summary-row">
@@ -172,14 +173,14 @@ export default function CartPage() {
                 {deliveryFee === 0 ? (
                   <span className="free-shipping-tag">Free Delivery</span>
                 ) : (
-                  `$${deliveryFee.toFixed(2)}`
+                  formatCurrency(deliveryFee)
                 )}
               </span>
             </div>
 
-            {subtotal < 100 && (
+            {subtotal < 999 && (
               <p className="free-shipping-hint">
-                Add <strong>${(100 - subtotal).toFixed(2)}</strong> more to unlock Free Delivery!
+                Add <strong>{formatCurrency(999 - subtotal)}</strong> more to unlock Free Delivery!
               </p>
             )}
 
@@ -187,7 +188,7 @@ export default function CartPage() {
 
             <div className="summary-row total-row">
               <span className="summary-total-label">Estimated Total</span>
-              <span className="summary-total-value">${totalAmount.toFixed(2)}</span>
+              <span className="summary-total-value">{formatCurrency(totalAmount)}</span>
             </div>
 
             <button

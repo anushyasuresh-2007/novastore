@@ -214,6 +214,7 @@ def test_admin_create_product_success(client, admin_headers):
     data = response.get_json()
     assert data["product"]["name"] == payload["name"]
     assert data["product"]["price"] == 79.99
+    assert data["product"]["currency"] == "INR"
     assert data["product"]["stock_quantity"] == 25
 
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { fetchAdminStats } from "../../services/adminApi";
 import { useAdminAuth } from "../../context/AdminAuthContext";
+import { formatCurrency } from "../../utils/currency";
 
 export default function AdminDashboardPage({ onViewOrder }) {
   const { setActiveTab } = useAdminAuth();
@@ -109,9 +110,9 @@ export default function AdminDashboardPage({ onViewOrder }) {
                 </svg>
               </div>
               <div className="metric-content">
-                <span className="metric-label">Total Sales (Recorded)</span>
-                <span className="metric-value">${stats.total_sales.toFixed(2)}</span>
-                <span className="metric-subtext">From {stats.total_orders} total customer orders</span>
+                <span className="metric-label">Store Revenue (INR)</span>
+                <span className="metric-value">{formatCurrency(stats.total_sales_inr ?? stats.total_sales, "INR")}</span>
+                <span className="metric-subtext">Historical: {formatCurrency(stats.total_sales_usd || 0, "USD")}</span>
               </div>
             </div>
 
@@ -206,7 +207,7 @@ export default function AdminDashboardPage({ onViewOrder }) {
                         </td>
                         <td>{ord.city}</td>
                         <td>
-                          <strong>${ord.total_amount.toFixed(2)}</strong>
+                          <strong>{formatCurrency(ord.total_amount, ord.currency || "USD")}</strong>
                         </td>
                         <td>
                           <span className={`status-badge ${getStatusBadgeClass(ord.status)}`}>

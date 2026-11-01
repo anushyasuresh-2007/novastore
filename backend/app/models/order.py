@@ -18,6 +18,7 @@ class Order(db.Model):
     subtotal = db.Column(db.Float, nullable=False)
     delivery_fee = db.Column(db.Float, nullable=False, default=0.0)
     total_amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(3), nullable=False, default="INR")
     status = db.Column(db.String(30), nullable=False, default="CONFIRMED", index=True)
     created_at = db.Column(
         db.DateTime,
@@ -60,6 +61,7 @@ class Order(db.Model):
             "subtotal": round(float(self.subtotal), 2),
             "delivery_fee": round(float(self.delivery_fee), 2),
             "total_amount": round(float(self.total_amount), 2),
+            "currency": self.currency or "INR",
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

@@ -23,6 +23,7 @@ class OrderItem(db.Model):
     unit_price = db.Column(db.Float, nullable=False)  # Purchase-time snapshot
     quantity = db.Column(db.Integer, nullable=False)
     line_total = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(3), nullable=False, default="INR")
 
     product = db.relationship("Product", lazy="joined")
 
@@ -42,6 +43,7 @@ class OrderItem(db.Model):
             "unit_price": round(float(self.unit_price), 2),
             "quantity": int(self.quantity),
             "line_total": round(float(self.line_total), 2),
+            "currency": self.currency or "INR",
         }
 
     def __repr__(self) -> str:

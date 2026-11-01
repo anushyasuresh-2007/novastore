@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useCart } from "../context/CartContext";
+import { formatCurrency } from "../utils/currency";
 
 export default function ProductCard({ product, onViewDetails }) {
   const { addToCart } = useCart();
@@ -62,7 +63,7 @@ export default function ProductCard({ product, onViewDetails }) {
         </p>
 
         <div className="product-meta-row">
-          <span className="product-price">${Number(product.price).toFixed(2)}</span>
+          <span className="product-price">{formatCurrency(product.price, product.currency)}</span>
           {getStockBadge(product.stock_quantity)}
         </div>
 

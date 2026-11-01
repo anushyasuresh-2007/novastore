@@ -44,19 +44,22 @@ def test_successful_order_creation(client, app):
 
     # Check snapshots
     item1 = next(it for it in order["items"] if it["product_id"] == 1)
-    assert item1["unit_price"] == 89.99
+    assert item1["unit_price"] == 6999.0
     assert item1["quantity"] == 1
-    assert item1["line_total"] == 89.99
+    assert item1["line_total"] == 6999.0
+    assert item1["currency"] == "INR"
 
     item2 = next(it for it in order["items"] if it["product_id"] == 2)
-    assert item2["unit_price"] == 49.50
+    assert item2["unit_price"] == 3799.0
     assert item2["quantity"] == 2
-    assert item2["line_total"] == 99.00
+    assert item2["line_total"] == 7598.0
+    assert item2["currency"] == "INR"
 
-    # Subtotal = 89.99 + 99.00 = 188.99 (>= 100 -> delivery fee 0)
-    assert order["subtotal"] == 188.99
+    # Subtotal = 6999.0 + 7598.0 = 14597.0 (>= 999 -> delivery fee 0)
+    assert order["subtotal"] == 14597.0
     assert order["delivery_fee"] == 0.0
-    assert order["total_amount"] == 188.99
+    assert order["total_amount"] == 14597.0
+    assert order["currency"] == "INR"
 
 
 def test_invalid_customer_details(client):
@@ -145,30 +148,40 @@ def test_server_side_price_calculation_ignores_client_tampering(client):
     assert response.status_code == 201
 
     order = response.get_json()["order"]
-    assert order["items"][0]["unit_price"] == 89.99
-    assert order["subtotal"] == 89.99
-    # Subtotal < 100 -> $5.00 delivery fee
-    assert order["delivery_fee"] == 5.0
-    assert order["total_amount"] == 94.99
+    assert order["items"][0]["unit_price"] == 6999.0
+    assert order["subtotal"] == 6999.0
+    # Subtotal >= 999 -> 0.0 delivery fee
+    assert order["delivery_fee"] == 0.0
+    assert order["total_amount"] == 6999.0
+    assert order["currency"] == "INR"
 
 
-def test_delivery_fee_threshold(client):
-    """Test delivery fee rules: free if subtotal >= 100, $5.00 otherwise."""
-    # Under $100: Product 2 ($49.50) x 1 = $49.50
+def test_delivery_fee_threshold(client, app):
+    """Test delivery fee rules: free if subtotal >= 999, ₹99.0 otherwise."""
+    # Under ₹999: update Product 2 price to 500.0 for this test
+    with app.app_context():
+        p = db.session.get(Product, 2)
+        p.price = 500.0
+        db.session.commit()
+
     p1 = get_valid_order_payload()
     p1["items"] = [{"product_id": 2, "quantity": 1}]
     r1 = client.post("/api/orders", json=p1)
     assert r1.status_code == 201
-    assert r1.get_json()["order"]["delivery_fee"] == 5.0
-    assert r1.get_json()["order"]["total_amount"] == 54.50
+    assert r1.get_json()["order"]["subtotal"] == 500.0
+    assert r1.get_json()["order"]["delivery_fee"] == 99.0
+    assert r1.get_json()["order"]["total_amount"] == 599.0
+    assert r1.get_json()["order"]["currency"] == "INR"
 
-    # Over $100: Product 4 ($199.99) x 1 = $199.99
+    # Over ₹999: Product 4 (14999.0) x 1 = 14999.0
     p2 = get_valid_order_payload()
     p2["items"] = [{"product_id": 4, "quantity": 1}]
     r2 = client.post("/api/orders", json=p2)
     assert r2.status_code == 201
+    assert r2.get_json()["order"]["subtotal"] == 14999.0
     assert r2.get_json()["order"]["delivery_fee"] == 0.0
-    assert r2.get_json()["order"]["total_amount"] == 199.99
+    assert r2.get_json()["order"]["total_amount"] == 14999.0
+    assert r2.get_json()["order"]["currency"] == "INR"
 
 
 def test_stock_reduction_after_successful_order(client, app):

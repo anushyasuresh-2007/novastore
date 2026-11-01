@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchProductById } from "../services/api";
 import { useCart } from "../context/CartContext";
+import { formatCurrency } from "../utils/currency";
 
 export default function ProductDetailsModal({ productId, onClose }) {
   const { addToCart } = useCart();
@@ -89,7 +90,7 @@ export default function ProductDetailsModal({ productId, onClose }) {
               <h2 className="modal-title">{product.name}</h2>
 
               <div className="modal-price-row">
-                <span className="modal-price">${Number(product.price).toFixed(2)}</span>
+                <span className="modal-price">{formatCurrency(product.price, product.currency)}</span>
                 <span className={`stock-pill ${product.stock_quantity > 0 ? "stock-in" : "stock-out"}`}>
                   {product.stock_quantity > 0 ? `${product.stock_quantity} in stock` : "Out of stock"}
                 </span>

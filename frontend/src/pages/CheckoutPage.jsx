@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useCart } from "../context/CartContext";
 import { createOrder } from "../services/api";
+import { formatCurrency } from "../utils/currency";
 
 export default function CheckoutPage() {
   const {
@@ -331,7 +332,7 @@ export default function CheckoutPage() {
                   <span>Verifying & Placing Order...</span>
                 </>
               ) : (
-                `Place Order • $${totalAmount.toFixed(2)}`
+                `Place Order • ${formatCurrency(totalAmount)}`
               )}
             </button>
           </form>
@@ -354,11 +355,11 @@ export default function CheckoutPage() {
                   <div className="checkout-item-details">
                     <span className="checkout-item-title">{item.name}</span>
                     <span className="checkout-item-sub">
-                      Qty: {item.quantity} × ${Number(item.price).toFixed(2)}
+                      Qty: {item.quantity} × {formatCurrency(item.price, item.currency)}
                     </span>
                   </div>
                   <span className="checkout-item-total">
-                    ${(item.price * item.quantity).toFixed(2)}
+                    {formatCurrency(item.price * item.quantity, item.currency)}
                   </span>
                 </div>
               ))}
@@ -368,7 +369,7 @@ export default function CheckoutPage() {
 
             <div className="summary-row">
               <span className="summary-label">Items Subtotal</span>
-              <span className="summary-value">${subtotal.toFixed(2)}</span>
+              <span className="summary-value">{formatCurrency(subtotal)}</span>
             </div>
 
             <div className="summary-row">
@@ -377,7 +378,7 @@ export default function CheckoutPage() {
                 {deliveryFee === 0 ? (
                   <span className="free-shipping-tag">Free</span>
                 ) : (
-                  `$${deliveryFee.toFixed(2)}`
+                  formatCurrency(deliveryFee)
                 )}
               </span>
             </div>
@@ -386,7 +387,7 @@ export default function CheckoutPage() {
 
             <div className="summary-row total-row">
               <span className="summary-total-label">Final Amount</span>
-              <span className="summary-total-value">${totalAmount.toFixed(2)}</span>
+              <span className="summary-total-value">{formatCurrency(totalAmount)}</span>
             </div>
 
             <div className="security-notice">

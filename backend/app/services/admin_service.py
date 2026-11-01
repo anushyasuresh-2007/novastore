@@ -34,10 +34,14 @@ class AdminService:
         # Total warehouse stock quantity across all products
         inventory_sum = db.session.query(func.coalesce(func.sum(Product.stock_quantity), 0)).scalar()
 
-        # Total sales from non-cancelled orders
-        sales_sum = db.session.query(
+        # Segregate sales by currency to never combine USD and INR amounts into one misleading total
+        sales_inr = db.session.query(
             func.coalesce(func.sum(Order.total_amount), 0.0)
-        ).filter(Order.status != "CANCELLED").scalar()
+        ).filter(Order.status != "CANCELLED", Order.currency == "INR").scalar()
+
+        sales_usd = db.session.query(
+            func.coalesce(func.sum(Order.total_amount), 0.0)
+        ).filter(Order.status != "CANCELLED", Order.currency == "USD").scalar()
 
         # Orders by status breakdown
         status_counts = (
@@ -69,7 +73,10 @@ class AdminService:
             "active_products": active_products,
             "total_orders": total_orders,
             "total_inventory": int(inventory_sum or 0),
-            "total_sales": round(float(sales_sum or 0.0), 2),
+            "total_sales": round(float(sales_inr or 0.0), 2),  # Active store currency (INR)
+            "total_sales_inr": round(float(sales_inr or 0.0), 2),
+            "total_sales_usd": round(float(sales_usd or 0.0), 2),
+            "currency": "INR",
             "orders_by_status": status_map,
             "low_stock_count": len(low_stock_products),
             "low_stock_products": [p.to_dict() for p in low_stock_products],
@@ -145,6 +152,7 @@ class AdminService:
             description=description,
             category=category,
             price=price,
+            currency=str(data.get("currency", "INR")).strip().upper() or "INR",
             stock_quantity=stock,
             image_path=image_path or "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80",
             is_active=bool(data.get("is_active", True)),

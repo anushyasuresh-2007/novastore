@@ -70,7 +70,7 @@ def test_complete_e2e_customer_journey(client, app):
     ]
 
     expected_subtotal = round(p1["price"] * 2 + p2["price"] * 1, 2)
-    expected_delivery = 0.0 if expected_subtotal >= 100.0 else 5.0
+    expected_delivery = 0.0 if expected_subtotal >= 999.0 else 99.0
     expected_total = round(expected_subtotal + expected_delivery, 2)
 
     # Step 7 & 8: Checkout customer payload
@@ -97,6 +97,7 @@ def test_complete_e2e_customer_journey(client, app):
     assert created_order["subtotal"] == expected_subtotal
     assert created_order["delivery_fee"] == expected_delivery
     assert created_order["total_amount"] == expected_total
+    assert created_order["currency"] == "INR"
     assert created_order["status"] == "CONFIRMED"
     assert len(created_order["items"]) == 2
 
