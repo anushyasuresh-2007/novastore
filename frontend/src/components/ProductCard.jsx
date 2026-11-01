@@ -1,9 +1,25 @@
 import React, { useState } from "react";
+import { useCart } from "../context/CartContext";
 
 export default function ProductCard({ product, onViewDetails }) {
+  const { addToCart } = useCart();
   const [imageError, setImageError] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
 
   const fallbackImage = "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80";
+
+  const isOutOfStock = product.stock_quantity <= 0;
+
+  const handleAddToCart = (e) => {
+    e.stopPropagation();
+    if (isOutOfStock) return;
+
+    const res = addToCart(product, 1);
+    if (res.success) {
+      setJustAdded(true);
+      setTimeout(() => setJustAdded(false), 900);
+    }
+  };
 
   const getStockBadge = (stock) => {
     if (stock <= 0) {
@@ -56,17 +72,32 @@ export default function ProductCard({ product, onViewDetails }) {
             className="btn-view-details"
             onClick={() => onViewDetails(product)}
           >
-            Product Details
+            Details
           </button>
           <button
             type="button"
-            className="btn-add-cart-preview"
-            title="Cart operations will be enabled in Phase 5"
-            disabled={product.stock_quantity <= 0}
+            className={`btn-add-cart ${justAdded ? "btn-added" : ""}`}
+            onClick={handleAddToCart}
+            disabled={isOutOfStock}
+            title={isOutOfStock ? "Out of Stock" : "Add 1 unit to cart"}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
+            {justAdded ? (
+              <>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>Added!</span>
+              </>
+            ) : (
+              <>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="9" cy="21" r="1"></circle>
+                  <circle cx="20" cy="21" r="1"></circle>
+                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                </svg>
+                <span>Add to Cart</span>
+              </>
+            )}
           </button>
         </div>
       </div>

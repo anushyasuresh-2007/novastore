@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { fetchProductById } from "../services/api";
+import { useCart } from "../context/CartContext";
 
 export default function ProductDetailsModal({ productId, onClose }) {
+  const { addToCart } = useCart();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [justAdded, setJustAdded] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -13,7 +17,10 @@ export default function ProductDetailsModal({ productId, onClose }) {
         setLoading(true);
         setError(null);
         const data = await fetchProductById(productId);
-        if (isMounted) setProduct(data);
+        if (isMounted) {
+          setProduct(data);
+          setQuantity(1);
+        }
       } catch (err) {
         if (isMounted) setError(err.message);
       } finally {
@@ -34,6 +41,16 @@ export default function ProductDetailsModal({ productId, onClose }) {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [productId, onClose]);
+
+  const handleAddToCart = () => {
+    if (!product || product.stock_quantity <= 0) return;
+
+    const res = addToCart(product, quantity);
+    if (res.success) {
+      setJustAdded(true);
+      setTimeout(() => setJustAdded(false), 1200);
+    }
+  };
 
   const fallbackImage = "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80";
 
@@ -96,15 +113,65 @@ export default function ProductDetailsModal({ productId, onClose }) {
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="btn-view-details"
-                style={{ padding: "0.875rem", fontSize: "0.9375rem" }}
-                disabled={product.stock_quantity <= 0}
-                title="Full cart and purchasing is enabled in upcoming phases"
-              >
-                {product.stock_quantity > 0 ? "Add to Cart (Phase 5)" : "Out of Stock"}
-              </button>
+              {product.stock_quantity > 0 ? (
+                <div className="modal-actions-container">
+                  <div className="modal-qty-selector">
+                    <span className="modal-qty-label">Quantity:</span>
+                    <div className="qty-stepper">
+                      <button
+                        type="button"
+                        className="qty-btn"
+                        onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                        disabled={quantity <= 1}
+                      >
+                        –
+                      </button>
+                      <span className="qty-display">{quantity}</span>
+                      <button
+                        type="button"
+                        className="qty-btn"
+                        onClick={() => setQuantity((q) => Math.min(product.stock_quantity, q + 1))}
+                        disabled={quantity >= product.stock_quantity}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`btn-modal-add-cart ${justAdded ? "btn-added" : ""}`}
+                    onClick={handleAddToCart}
+                  >
+                    {justAdded ? (
+                      <>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>Added to Cart!</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="9" cy="21" r="1"></circle>
+                          <circle cx="20" cy="21" r="1"></circle>
+                          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                        </svg>
+                        <span>Add {quantity} to Cart</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-modal-add-cart"
+                  disabled
+                  style={{ opacity: 0.6, cursor: "not-allowed" }}
+                >
+                  Currently Out of Stock
+                </button>
+              )}
             </div>
           </div>
         ) : null}
