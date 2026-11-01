@@ -14,6 +14,7 @@ class Product(db.Model):
     price = db.Column(db.Float, nullable=False)
     stock_quantity = db.Column(db.Integer, nullable=False, default=0)
     image_path = db.Column(db.String(255), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(
         db.DateTime,
         nullable=False,
@@ -42,6 +43,7 @@ class Product(db.Model):
             "price": round(float(self.price), 2),
             "stock_quantity": int(self.stock_quantity),
             "image_path": self.image_path,
+            "is_active": bool(self.is_active if self.is_active is not None else True),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

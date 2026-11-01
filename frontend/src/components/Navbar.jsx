@@ -33,6 +33,14 @@ export default function Navbar() {
           >
             Catalogue
           </button>
+          <button
+            type="button"
+            className={`nav-link-btn ${currentView === "admin" ? "active" : ""}`}
+            onClick={() => setCurrentView("admin")}
+            title="Administrator Portal"
+          >
+            Admin
+          </button>
         </nav>
 
         <div className="nav-actions">

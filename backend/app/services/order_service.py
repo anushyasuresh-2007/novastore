@@ -68,8 +68,8 @@ class OrderService:
         """Generate a unique order reference in the format ORD-YYYYMMDD-XXXX."""
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
         for _ in range(10):
-            # 4 uppercase alphanumeric characters
-            suffix = secrets.token_hex(2).upper()
+            # 8 uppercase alphanumeric characters for high entropy uniqueness
+            suffix = secrets.token_hex(4).upper()
             reference = f"ORD-{date_str}-{suffix}"
             if not Order.query.filter_by(order_reference=reference).first():
                 return reference

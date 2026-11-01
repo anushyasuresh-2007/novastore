@@ -23,11 +23,15 @@ class ProductService:
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         sort_by: Optional[str] = None,
+        include_inactive: bool = False,
     ) -> List[Product]:
         """
         Query products applying optional search, category, price range, and sort orders.
         """
         query = Product.query
+
+        if not include_inactive:
+            query = query.filter(Product.is_active == True)
 
         # Search by product name (case-insensitive substring match)
         if search and search.strip():
@@ -53,20 +57,23 @@ class ProductService:
         return query.all()
 
     @classmethod
-    def get_product_by_id(cls, product_id: int) -> Optional[Product]:
+    def get_product_by_id(cls, product_id: int, include_inactive: bool = False) -> Optional[Product]:
         """Fetch a single product by its primary key ID."""
-        return db.session.get(Product, product_id)
+        product = db.session.get(Product, product_id)
+        if product and not include_inactive and not product.is_active:
+            return None
+        return product
 
     @classmethod
-    def get_categories(cls) -> List[Dict[str, Any]]:
+    def get_categories(cls, include_inactive: bool = False) -> List[Dict[str, Any]]:
         """Return list of distinct categories with product counts."""
-        results = (
-            db.session.query(
-                Product.category,
-                func.count(Product.id).label("count")
-            )
-            .group_by(Product.category)
-            .order_by(Product.category.asc())
-            .all()
+        query = db.session.query(
+            Product.category,
+            func.count(Product.id).label("count")
         )
+        if not include_inactive:
+            query = query.filter(Product.is_active == True)
+
+        results = query.group_by(Product.category).order_by(Product.category.asc()).all()
         return [{"name": cat, "count": count} for cat, count in results]
+

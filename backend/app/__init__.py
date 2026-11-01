@@ -26,8 +26,10 @@ def create_app(config_name: str | None = None) -> Flask:
     # Register Blueprints
     from app.routes.product_routes import product_bp
     from app.routes.order_routes import order_bp
+    from app.routes.admin_routes import admin_bp
     app.register_blueprint(product_bp)
     app.register_blueprint(order_bp)
+    app.register_blueprint(admin_bp)
 
     # Health check route
     @app.route("/api/health", methods=["GET"])
@@ -72,5 +74,46 @@ def create_app(config_name: str | None = None) -> Flask:
             init_db(drop_all=True)
             count = seed_db()
             print(f"Database reset and re-seeded with {count} products.")
+
+    @app.cli.command("create-admin")
+    def create_admin_command():
+        """Interactively create an administrator account."""
+        import getpass
+        from app.models.admin import Admin
+
+        print("=== Novastore Administrator Account Creation ===")
+        username = input("Enter admin username: ").strip()
+        if not username:
+            print("Error: Username cannot be blank.")
+            return
+
+        email = input("Enter admin email: ").strip().lower()
+        if not email or "@" not in email:
+            print("Error: Valid email address required.")
+            return
+
+        password = getpass.getpass("Enter secure password (min 6 chars): ")
+        if len(password) < 6:
+            print("Error: Password must be at least 6 characters.")
+            return
+
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            print("Error: Passwords do not match.")
+            return
+
+        with app.app_context():
+            existing = Admin.query.filter(
+                (Admin.username == username) | (Admin.email == email)
+            ).first()
+            if existing:
+                print(f"Error: Admin with username '{username}' or email '{email}' already exists.")
+                return
+
+            admin = Admin(username=username, email=email)
+            admin.set_password(password)
+            db.session.add(admin)
+            db.session.commit()
+            print(f"Success! Administrator '{admin.username}' created successfully (ID: {admin.id}).")
 
     return app

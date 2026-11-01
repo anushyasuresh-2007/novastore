@@ -1,8 +1,11 @@
+import os
 import logging
+from sqlalchemy import text
 from app.models.db import db
 from app.models.product import Product
 from app.models.order import Order
 from app.models.order_item import OrderItem
+from app.models.admin import Admin
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +283,22 @@ SAMPLE_PRODUCTS = [
 ]
 
 
+def ensure_schema_updates():
+    """Ensure non-destructive backward-compatible schema updates."""
+    try:
+        with db.engine.connect() as conn:
+            # Check if products table exists and has is_active column
+            result = conn.execute(text("PRAGMA table_info(products)")).fetchall()
+            if result:
+                col_names = [r[1] for r in result]
+                if "is_active" not in col_names:
+                    logger.info("Adding 'is_active' column to products table...")
+                    conn.execute(text("ALTER TABLE products ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+                    conn.commit()
+    except Exception as exc:
+        logger.warning(f"Schema update check notice: {exc}")
+
+
 def init_db(drop_all: bool = False):
     """Create all database tables, optionally dropping existing tables first."""
     if drop_all:
@@ -287,6 +306,7 @@ def init_db(drop_all: bool = False):
         db.drop_all()
     logger.info("Creating database tables...")
     db.create_all()
+    ensure_schema_updates()
 
 
 def seed_db():

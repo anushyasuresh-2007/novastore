@@ -69,6 +69,24 @@ A complete, modern, professional full-stack Online Shopping Store application bu
 - **Confirmation Screen**: Displays a confirmation checkmark, unique order reference, customer delivery information, order status (`CONFIRMED`), timestamp, itemized product table, and pricing breakdown.
 - **Interactive Tools**: Single-click "Copy Code" reference button, "Print Receipt" (`window.print()`), and "Continue Shopping" button.
 
+### F. Secure Admin Dashboard & Inventory Operations
+- **Server-Side Authentication**: Secure login using Werkzeug cryptographic password hashing (`scrypt/pbkdf2`) and signed timestamped bearer tokens (`itsdangerous`).
+- **Access Control & Protected APIs**: Every administrative endpoint is strictly guarded with the `@admin_required` decorator. Ordinary visitors cannot perform administrative mutations.
+- **Executive Overview**: High-level KPI metric cards displaying total products, active catalogue items, total customer orders, total recorded warehouse inventory, and gross sales.
+- **Order Fulfillment Breakdown**: Status breakdown pill metrics and recent customer order feeds.
+- **Product Inventory Management**:
+  - Full catalogue table viewing all 30 products with status badges (`Active` / `Inactive`).
+  - Search by title or SKU and filter by category or stock condition.
+  - "Add Product" and "Edit Product" modal dialogs with strict client and server validation.
+  - Inline stock steppers (`+` / `–`) allowing rapid inventory count adjustments.
+  - Safe Product Deletion: When an admin deletes a product with order history, it is **safely deactivated** (`is_active = False`) from the storefront rather than destroyed, preserving customer purchase invoices and database integrity.
+- **Order Management & Status Tracking**:
+  - Live order search by customer name, email, phone, or order reference.
+  - Filter orders by status (`PENDING`, `CONFIRMED`, `SHIPPED`, `DELIVERED`, `CANCELLED`).
+  - Deep-dive Order Details Modal displaying customer details, shipping address, purchase-time product snapshots, and line totals.
+  - Controlled status updater transitioning orders between lifecycle stages with real-time feedback.
+- **Storefront & Admin Portals**: Single-click seamless navigation between the public customer storefront and administrator dashboard.
+
 ---
 
 ## Technology Stack
@@ -233,6 +251,19 @@ Done! 30 products available in database.
 
 The database seeding logic is **idempotent and safe**: running `python seed.py` repeatedly will never overwrite existing product prices, never reset inventory for products with orders, and never create duplicate records.
 
+### Creating an Administrator Account
+
+Administrator registration is strictly prohibited through public web endpoints. To provision an administrator, use either the standalone script or the Flask interactive CLI:
+
+```powershell
+# Option A: Standalone CLI Script (with command-line arguments)
+cd D:\E-Commerce\backend
+.\.venv\Scripts\Activate.ps1
+python create_admin.py --username admin --email admin@example.com --password YourSecurePassword123!
+
+# Option B: Interactive CLI Command (prompts for masked password)
+flask --app run.py create-admin
+```
 
 ---
 
@@ -261,7 +292,7 @@ npm run dev
 
 ## Automated Testing
 
-### 1. Backend Pytest Suite (50 Tests)
+### 1. Backend Pytest Suite (69 Tests)
 The backend tests run against an isolated in-memory SQLite database (`sqlite:///:memory:`) and never modify your development database.
 
 ```powershell
@@ -272,10 +303,11 @@ cd D:\E-Commerce
 
 *Expected Result:*
 ```text
-============================= 50 passed in 2.43s ==============================
+============================= 69 passed in 3.40s ==============================
 ```
 
 #### Test Suite Breakdown:
+- **`tests/test_admin_api.py`** (19 tests): Administrator login, email auth, invalid credentials, token verification, unauthorized access, dashboard stats, product creation/updating, safe soft-deletion preserving historical order items, orders list/filtering, and status transitions.
 - **`tests/test_app.py`** (1 test): Application factory and development configurations.
 - **`tests/test_database.py`** (5 tests): Seeding idempotency, transaction rollbacks, and SQLite `PRAGMA foreign_keys=ON`.
 - **`tests/test_models.py`** (4 tests): Non-negative price/stock check constraints, cascade deletions, and purchase snapshot retention.
@@ -286,7 +318,7 @@ cd D:\E-Commerce
 
 ---
 
-### 2. Frontend Automated Tests (17 Tests)
+### 2. Frontend Automated Tests (25 Tests)
 Runs natively using the Node.js test runner:
 
 ```powershell
@@ -296,10 +328,11 @@ npm test
 
 *Expected Result:*
 ```text
+✔ Admin Dashboard Frontend Logic Tests (8 tests)
 ✔ Frontend API Client Tests (5 tests)
 ✔ Shopping Cart Logic & State Tests (7 tests)
 ✔ Checkout Validation & Order Flow Tests (5 tests)
-ℹ tests 17 | pass 17 | fail 0
+ℹ tests 25 | pass 25 | fail 0
 ```
 
 ---
@@ -314,11 +347,11 @@ npm run build
 
 *Expected Result:*
 ```text
-✓ 44 modules transformed.
+✓ 52 modules transformed.
 dist/index.html                   0.84 kB │ gzip:  0.46 kB
-dist/assets/index-D9-hX59_.css   30.18 kB │ gzip:  5.61 kB
-dist/assets/index-DFbLoTLi.js   267.35 kB │ gzip: 79.75 kB
-✓ built in ~3s
+dist/assets/index-2sM-HN-3.css   45.13 kB │ gzip:  7.69 kB
+dist/assets/index-Dxq1gBQa.js   307.49 kB │ gzip: 87.65 kB
+✓ built in ~1s
 ```
 
 ---
@@ -485,10 +518,31 @@ Fetch an order's confirmation details by its reference.
     "delivery_fee": 0.0,
     "total_amount": 188.99,
     "created_at": "2026-11-01T15:38:53.242629",
-    "items": [...]
+    "items": []
   }
 }
 ```
+
+---
+
+### 6. Administrator API Endpoints (Protected: Bearer Token Required)
+
+All endpoints below require an `Authorization: Bearer <token>` header obtained from `/api/admin/login`.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/admin/login` | Authenticate admin credentials and issue bearer token. |
+| `POST` | `/api/admin/logout` | Terminate administrator session. |
+| `GET` | `/api/admin/me` | Verify token validity and fetch authenticated profile. |
+| `GET` | `/api/admin/stats` | Retrieve KPI metrics (sales, orders, inventory, recent orders). |
+| `GET` | `/api/admin/products` | Retrieve all catalogue products with status and stock filters. |
+| `POST` | `/api/admin/products` | Create a new product in the inventory. |
+| `GET` | `/api/admin/products/<id>` | Fetch a specific product's full record. |
+| `PUT` | `/api/admin/products/<id>` | Update product details, price, inventory, or visibility. |
+| `DELETE` | `/api/admin/products/<id>` | Safely soft-archive or permanently delete a product. |
+| `GET` | `/api/admin/orders` | Retrieve customer orders with status filter and search. |
+| `GET` | `/api/admin/orders/<id_or_ref>` | Fetch full order details including line item snapshots. |
+| `PATCH` | `/api/admin/orders/<id_or_ref>/status` | Update fulfillment status (`PENDING`, `CONFIRMED`, `SHIPPED`, `DELIVERED`, `CANCELLED`). |
 
 ---
 
@@ -497,13 +551,18 @@ Fetch an order's confirmation details by its reference.
 When preparing project submission media, capture the following application views:
 
 - [ ] **1. Storefront & Product Catalogue**: Default landing page showing the modern navigation bar, live cart count badge, hero banner, category chips, and product grid.
-- [ ] **2. Search & Filtering in Action**: Products filtered by category (e.g. `Audio`) and sorted by price (ascending).
+- [ ] **2. Search & Filtering in Action**: Products filtered by category (e.g. `Audio`, `Photography`) and sorted by price.
 - [ ] **3. Product Details Modal**: Open modal showcasing product specifications, category tag, live stock status, and quantity stepper.
 - [ ] **4. Shopping Cart Page**: Cart view displaying items with line totals, quantity controls (`+` / `–`), subtotal, dynamic free delivery hint, and order summary.
 - [ ] **5. Empty Cart State**: View displayed when all items are cleared from the cart with the "Explore Catalog" CTA.
-- [ ] **6. Checkout Page**: Shipping form with customer inputs, inline validation indicators, and simulated checkout badge.
-- [ ] **7. Order Confirmation Page**: Complete receipt screen showing the green success badge, unique order reference (`ORD-YYYYMMDD-XXXX`), customer delivery information, and itemized purchase snapshot table.
-- [ ] **8. GitHub Repository & Passing Tests**: Terminal screenshot showing `46 passed` pytest results and `15 passed` frontend tests.
+- [ ] **6. Checkout Page**: Shipping form with customer inputs, Indian phone and PIN validation indicators.
+- [ ] **7. Order Confirmation Page**: Complete receipt screen showing the green success badge, unique order reference (`ORD-YYYYMMDD-XXXXXXXX`), and itemized purchase snapshot table.
+- [ ] **8. Admin Login Portal**: Secure authentication screen with username/email and password fields.
+- [ ] **9. Admin Executive Overview**: Dashboard KPI metrics cards, status breakdown pills, and recent customer orders table.
+- [ ] **10. Admin Product Inventory**: Full 30-item table with status badges, inline stock adjusters, and Add/Edit modal.
+- [ ] **11. Admin Order Fulfillment**: Orders table with status filters and detailed Order Details Modal with purchase snapshots.
+- [ ] **12. Terminal & Passing Tests**: Terminal showing all 69 backend tests passing and 25 frontend tests passing.
+
 
 ---
 
