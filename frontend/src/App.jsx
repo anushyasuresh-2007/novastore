@@ -1,9 +1,15 @@
+import React from "react";
+import Navbar from "./components/Navbar";
+import CatalogPage from "./pages/CatalogPage";
+import Footer from "./components/Footer";
+
 function App() {
   return (
-    <main>
-      <h1>Online Shopping Store</h1>
-      <p>Storefront starter — shopping features are not implemented yet.</p>
-    </main>
+    <div className="app-layout">
+      <Navbar cartCount={0} />
+      <CatalogPage />
+      <Footer />
+    </div>
   );
 }
 
