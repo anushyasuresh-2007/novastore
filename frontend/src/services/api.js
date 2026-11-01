@@ -7,11 +7,6 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 /**
  * Fetch products with optional filters, search, and sorting.
  * @param {Object} params
- * @param {string} [params.search]
- * @param {string} [params.category]
- * @param {number|string} [params.minPrice]
- * @param {number|string} [params.maxPrice]
- * @param {string} [params.sort]
  * @returns {Promise<{products: Array, count: number, filters: Object}>}
  */
 export async function fetchProducts({
@@ -70,4 +65,45 @@ export async function fetchCategories() {
 
   const data = await response.json();
   return data.categories || [];
+}
+
+/**
+ * Create a new order with simulated checkout.
+ * @param {Object} orderData
+ * @returns {Promise<{message: string, order: Object}>}
+ */
+export async function createOrder(orderData) {
+  const response = await fetch(`${API_BASE}/orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(orderData),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || `Failed to place order (${response.status})`);
+  }
+
+  return data;
+}
+
+/**
+ * Retrieve order confirmation details by reference code.
+ * @param {string} reference
+ * @returns {Promise<{order: Object}>}
+ */
+export async function fetchOrderByReference(reference) {
+  const cleanRef = encodeURIComponent(reference.trim().toUpperCase());
+  const response = await fetch(`${API_BASE}/orders/${cleanRef}`);
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || `Order '${reference}' not found`);
+  }
+
+  return data;
 }

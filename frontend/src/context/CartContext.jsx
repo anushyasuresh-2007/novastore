@@ -17,7 +17,8 @@ export function CartProvider({ children }) {
 
   const [notification, setNotification] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [currentView, setCurrentView] = useState("catalog"); // "catalog" | "cart"
+  const [currentView, setCurrentView] = useState("catalog"); // "catalog" | "cart" | "checkout" | "confirmation"
+  const [confirmedOrder, setConfirmedOrder] = useState(null);
 
   // Persist to localStorage whenever cartItems changes
   useEffect(() => {
@@ -187,7 +188,16 @@ export function CartProvider({ children }) {
         isCartOpen,
         currentView,
         setCurrentView,
+        confirmedOrder,
+        setConfirmedOrder,
         setIsCartOpen,
+        goToCatalog: () => setCurrentView("catalog"),
+        goToCart: () => setCurrentView("cart"),
+        goToCheckout: () => setCurrentView("checkout"),
+        goToConfirmation: (order) => {
+          setConfirmedOrder(order);
+          setCurrentView("confirmation");
+        },
         openCart: () => {
           setIsCartOpen(true);
           setCurrentView("cart");

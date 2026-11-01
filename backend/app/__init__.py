@@ -25,7 +25,9 @@ def create_app(config_name: str | None = None) -> Flask:
 
     # Register Blueprints
     from app.routes.product_routes import product_bp
+    from app.routes.order_routes import order_bp
     app.register_blueprint(product_bp)
+    app.register_blueprint(order_bp)
 
     # Health check route
     @app.route("/api/health", methods=["GET"])

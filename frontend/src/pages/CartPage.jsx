@@ -12,6 +12,7 @@ export default function CartPage() {
     removeFromCart,
     clearCart,
     setCurrentView,
+    goToCheckout,
   } = useCart();
 
   const fallbackImage = "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80";
@@ -192,10 +193,7 @@ export default function CartPage() {
             <button
               type="button"
               className="btn-checkout-preview"
-              title="Checkout and simulated order processing will be completed in Phase 6"
-              onClick={() => {
-                alert("Simulated Checkout is coming up in Phase 6!");
-              }}
+              onClick={goToCheckout}
             >
               Proceed to Checkout →
             </button>
