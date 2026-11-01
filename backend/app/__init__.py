@@ -23,6 +23,10 @@ def create_app(config_name: str | None = None) -> Flask:
     )
     db.init_app(app)
 
+    # Register Blueprints
+    from app.routes.product_routes import product_bp
+    app.register_blueprint(product_bp)
+
     # Health check route
     @app.route("/api/health", methods=["GET"])
     def health_check():
