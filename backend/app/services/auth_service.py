@@ -1,6 +1,7 @@
 """Authentication service for administrator login, session tokens, and access control."""
 from functools import wraps
 from datetime import datetime, timezone
+import hashlib
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from flask import request, jsonify, current_app
 from app.models.db import db
@@ -20,6 +21,13 @@ class AuthService:
         return URLSafeTimedSerializer(secret_key=secret_key, salt=TOKEN_SALT)
 
     @classmethod
+    def _compute_pw_sig(cls, admin: Admin) -> str:
+        """Compute a 16-char SHA-256 fingerprint of the current password hash."""
+        if not admin or not admin.password_hash:
+            return ""
+        return hashlib.sha256(admin.password_hash.encode("utf-8")).hexdigest()[:16]
+
+    @classmethod
     def generate_token(cls, admin: Admin) -> str:
         """Generate a cryptographically signed, timestamped authentication token."""
         serializer = cls._get_serializer()
@@ -27,6 +35,7 @@ class AuthService:
             "admin_id": admin.id,
             "username": admin.username,
             "role": admin.role,
+            "pw_sig": cls._compute_pw_sig(admin),
         }
         return serializer.dumps(payload)
 
@@ -34,7 +43,8 @@ class AuthService:
     def verify_token(cls, token: str, max_age: int = DEFAULT_MAX_AGE_SECONDS) -> Admin | None:
         """
         Verify the validity and signature of an authentication token.
-        Returns the Admin instance if valid and active, or None if expired/tampered.
+        Returns the Admin instance if valid, active, and token matches current password state,
+        or None if expired, tampered, deactivated, or revoked via password change.
         """
         if not token:
             return None
@@ -48,6 +58,11 @@ class AuthService:
 
             admin = db.session.get(Admin, admin_id)
             if not admin or not admin.is_active:
+                return None
+
+            # Invalidate tokens issued prior to an administrator password rotation
+            pw_sig = payload.get("pw_sig")
+            if pw_sig and cls._compute_pw_sig(admin) != pw_sig:
                 return None
 
             return admin

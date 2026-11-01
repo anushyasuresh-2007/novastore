@@ -251,19 +251,55 @@ Done! 30 products available in database.
 
 The database seeding logic is **idempotent and safe**: running `python seed.py` repeatedly will never overwrite existing product prices, never reset inventory for products with orders, and never create duplicate records.
 
-### Creating an Administrator Account
+### Administrator Account Provisioning & Password Management
 
-Administrator registration is strictly prohibited through public web endpoints. To provision an administrator, use either the standalone script or the Flask interactive CLI:
+Administrator accounts cannot be registered through public web endpoints. To provision an administrator or rotate credentials, use one of the secure methods below.
+
+> [!NOTE]
+> For credential security, passwords should never be passed as plaintext command-line flags, which expose them in system process lists (`ps`, Task Manager) and shell history files. Always prefer interactive masked entry or environment variables.
+
+#### 1. Creating or Provisioning an Administrator
 
 ```powershell
-# Option A: Standalone CLI Script (with command-line arguments)
 cd D:\E-Commerce\backend
 .\.venv\Scripts\Activate.ps1
-python create_admin.py --username admin --email admin@example.com --password YourSecurePassword123!
 
-# Option B: Interactive CLI Command (prompts for masked password)
+# Option A: Interactive Prompt (Recommended - prompts for username, email, and masked password with confirmation)
+python create_admin.py
+
+# Option B: Secure Environment Variable
+$env:ADMIN_USERNAME="admin"
+$env:ADMIN_EMAIL="admin@novastore.com"
+$env:ADMIN_PASSWORD="YourSecurePassword123!"
+python create_admin.py
+Remove-Item Env:\ADMIN_PASSWORD
+
+# Option C: Flask Interactive CLI
 flask --app run.py create-admin
 ```
+
+#### 2. Rotating Existing Administrator Password
+
+To rotate the password for an existing administrator without altering database records or creating additional accounts:
+
+```powershell
+cd D:\E-Commerce\backend
+.\.venv\Scripts\Activate.ps1
+
+# Option A: Dedicated Password Rotation Tool (prompts for masked password with confirmation)
+python rotate_admin_password.py --username admin
+
+# Option B: Flask Interactive CLI Command
+flask --app run.py change-admin-password
+
+# Option C: Environment-Based Rotation (for automated credential managers)
+$env:NEW_ADMIN_PASSWORD="YourNewSecurePassword123!"
+python rotate_admin_password.py --username admin
+Remove-Item Env:\NEW_ADMIN_PASSWORD
+```
+
+*Security Assurance:* Rotating the administrator password updates the cryptographic signature of the stored hash and immediately revokes all active session bearer tokens across all browsers.
+
 
 ---
 
@@ -292,7 +328,7 @@ npm run dev
 
 ## Automated Testing
 
-### 1. Backend Pytest Suite (69 Tests)
+### 1. Backend Pytest Suite (71 Tests)
 The backend tests run against an isolated in-memory SQLite database (`sqlite:///:memory:`) and never modify your development database.
 
 ```powershell
@@ -303,11 +339,11 @@ cd D:\E-Commerce
 
 *Expected Result:*
 ```text
-============================= 69 passed in 3.40s ==============================
+============================= 71 passed in 4.10s ==============================
 ```
 
 #### Test Suite Breakdown:
-- **`tests/test_admin_api.py`** (19 tests): Administrator login, email auth, invalid credentials, token verification, unauthorized access, dashboard stats, product creation/updating, safe soft-deletion preserving historical order items, orders list/filtering, and status transitions.
+- **`tests/test_admin_api.py`** (21 tests): Administrator login, email auth, invalid credentials, token verification, unauthorized access, dashboard stats, product creation/updating, safe soft-deletion preserving historical order items, orders list/filtering, order status state machine transitions, and session invalidation on password rotation.
 - **`tests/test_app.py`** (1 test): Application factory and development configurations.
 - **`tests/test_database.py`** (5 tests): Seeding idempotency, transaction rollbacks, and SQLite `PRAGMA foreign_keys=ON`.
 - **`tests/test_models.py`** (4 tests): Non-negative price/stock check constraints, cascade deletions, and purchase snapshot retention.
@@ -318,7 +354,7 @@ cd D:\E-Commerce
 
 ---
 
-### 2. Frontend Automated Tests (25 Tests)
+### 2. Frontend Automated Tests (28 Tests)
 Runs natively using the Node.js test runner:
 
 ```powershell
@@ -328,11 +364,11 @@ npm test
 
 *Expected Result:*
 ```text
-✔ Admin Dashboard Frontend Logic Tests (8 tests)
+✔ Admin Dashboard Frontend Logic Tests (11 tests)
 ✔ Frontend API Client Tests (5 tests)
 ✔ Shopping Cart Logic & State Tests (7 tests)
 ✔ Checkout Validation & Order Flow Tests (5 tests)
-ℹ tests 25 | pass 25 | fail 0
+ℹ tests 28 | pass 28 | fail 0
 ```
 
 ---
@@ -561,7 +597,7 @@ When preparing project submission media, capture the following application views
 - [ ] **9. Admin Executive Overview**: Dashboard KPI metrics cards, status breakdown pills, and recent customer orders table.
 - [ ] **10. Admin Product Inventory**: Full 30-item table with status badges, inline stock adjusters, and Add/Edit modal.
 - [ ] **11. Admin Order Fulfillment**: Orders table with status filters and detailed Order Details Modal with purchase snapshots.
-- [ ] **12. Terminal & Passing Tests**: Terminal showing all 69 backend tests passing and 25 frontend tests passing.
+- [ ] **12. Terminal & Passing Tests**: Terminal showing all 71 backend tests passing and 28 frontend tests passing.
 
 
 ---

@@ -47,6 +47,21 @@ export function AdminAuthProvider({ children }) {
     };
   }, []);
 
+  // Listen for unauthorized/expired session events from API client
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setAdmin(null);
+      setToken(null);
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("admin:unauthorized", handleUnauthorized);
+      return () => {
+        window.removeEventListener("admin:unauthorized", handleUnauthorized);
+      };
+    }
+  }, []);
+
   const login = async (username, password) => {
     const data = await apiLogin(username, password);
     setAdmin(data.admin);

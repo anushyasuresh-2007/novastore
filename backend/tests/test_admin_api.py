@@ -452,7 +452,34 @@ def test_admin_update_order_status(client, admin_headers, app):
     assert res2.status_code == 200
     assert res2.get_json()["order"]["status"] == "DELIVERED"
 
-    # Reject invalid status
+    # Reject invalid backwards transition from DELIVERED to PENDING
+    res_back = client.patch(
+        "/api/admin/orders/ORD-STATUS-TEST/status",
+        headers=admin_headers,
+        json={"status": "PENDING"}
+    )
+    assert res_back.status_code == 400
+    assert "Cannot transition order" in res_back.get_json()["error"]
+
+    # Reject transition from DELIVERED to SHIPPED
+    res_shipped_again = client.patch(
+        "/api/admin/orders/ORD-STATUS-TEST/status",
+        headers=admin_headers,
+        json={"status": "SHIPPED"}
+    )
+    assert res_shipped_again.status_code == 400
+    assert "Cannot transition order" in res_shipped_again.get_json()["error"]
+
+    # Allow idempotent update (DELIVERED to DELIVERED)
+    res_idempotent = client.patch(
+        "/api/admin/orders/ORD-STATUS-TEST/status",
+        headers=admin_headers,
+        json={"status": "DELIVERED"}
+    )
+    assert res_idempotent.status_code == 200
+    assert res_idempotent.get_json()["order"]["status"] == "DELIVERED"
+
+    # Reject invalid status name
     res_bad = client.patch(
         "/api/admin/orders/ORD-STATUS-TEST/status",
         headers=admin_headers,
@@ -460,3 +487,123 @@ def test_admin_update_order_status(client, admin_headers, app):
     )
     assert res_bad.status_code == 400
     assert "error" in res_bad.get_json()
+
+
+def test_order_status_state_machine_transitions(client, admin_headers, app):
+    """Test full matrix of allowed and forbidden order status state transitions."""
+    with app.app_context():
+        order1 = Order(
+            order_reference="ORD-TRANS-PENDING",
+            customer_name="Pooja",
+            customer_email="pooja@example.com",
+            customer_phone="9876543210",
+            delivery_address="Flat 2B",
+            city="Pune",
+            postal_code="411001",
+            subtotal=50.0,
+            delivery_fee=5.0,
+            total_amount=55.0,
+            status="PENDING",
+        )
+        order2 = Order(
+            order_reference="ORD-TRANS-CANCELLED",
+            customer_name="Ravi",
+            customer_email="ravi@example.com",
+            customer_phone="9876543210",
+            delivery_address="Plot 5",
+            city="Jaipur",
+            postal_code="302001",
+            subtotal=50.0,
+            delivery_fee=5.0,
+            total_amount=55.0,
+            status="CANCELLED",
+        )
+        db.session.add_all([order1, order2])
+        db.session.commit()
+
+    # 1. PENDING -> CONFIRMED is allowed
+    r1 = client.patch(
+        "/api/admin/orders/ORD-TRANS-PENDING/status",
+        headers=admin_headers,
+        json={"status": "CONFIRMED"}
+    )
+    assert r1.status_code == 200
+    assert r1.get_json()["order"]["status"] == "CONFIRMED"
+
+    # 2. CONFIRMED -> PENDING is forbidden
+    r2 = client.patch(
+        "/api/admin/orders/ORD-TRANS-PENDING/status",
+        headers=admin_headers,
+        json={"status": "PENDING"}
+    )
+    assert r2.status_code == 400
+    assert "Cannot transition order" in r2.get_json()["error"]
+
+    # 3. CANCELLED -> CONFIRMED is forbidden (terminal state)
+    r3 = client.patch(
+        "/api/admin/orders/ORD-TRANS-CANCELLED/status",
+        headers=admin_headers,
+        json={"status": "CONFIRMED"}
+    )
+    assert r3.status_code == 400
+    assert "Cannot transition order from 'CANCELLED'" in r3.get_json()["error"]
+
+    # 4. CANCELLED -> SHIPPED is forbidden
+    r4 = client.patch(
+        "/api/admin/orders/ORD-TRANS-CANCELLED/status",
+        headers=admin_headers,
+        json={"status": "SHIPPED"}
+    )
+    assert r4.status_code == 400
+
+    # 5. CANCELLED -> CANCELLED (idempotent) is allowed
+    r5 = client.patch(
+        "/api/admin/orders/ORD-TRANS-CANCELLED/status",
+        headers=admin_headers,
+        json={"status": "CANCELLED"}
+    )
+    assert r5.status_code == 200
+
+
+def test_admin_password_rotation_invalidates_session(client, app, admin_user):
+    """Test that rotating an administrator's password immediately invalidates active session tokens."""
+    from rotate_admin_password import rotate_admin_password
+
+    # 1. Obtain token with original password
+    with app.app_context():
+        admin = db.session.get(Admin, admin_user)
+        token = AuthService.generate_token(admin)
+        headers = {"Authorization": f"Bearer {token}"}
+
+    # Verify initial token works
+    res_initial = client.get("/api/admin/me", headers=headers)
+    assert res_initial.status_code == 200
+
+    # 2. Rotate the administrator's password
+    with app.app_context():
+        rotate_admin_password("superadmin", "BrandNewSecurePassword456!")
+
+    # 3. Verify previous token is now rejected with 401 Unauthorized
+    res_after_rotation = client.get("/api/admin/me", headers=headers)
+    assert res_after_rotation.status_code == 401
+    assert "Invalid or expired" in res_after_rotation.get_json()["error"]
+
+    # 4. Verify old password cannot log in
+    res_old_login = client.post("/api/admin/login", json={
+        "username": "superadmin",
+        "password": "AdminSecurePass123!"
+    })
+    assert res_old_login.status_code == 401
+
+    # 5. Verify new password can log in and receives fresh working token
+    res_new_login = client.post("/api/admin/login", json={
+        "username": "superadmin",
+        "password": "BrandNewSecurePassword456!"
+    })
+    assert res_new_login.status_code == 200
+    new_token = res_new_login.get_json()["token"]
+
+    # Fresh token works
+    res_fresh = client.get("/api/admin/me", headers={"Authorization": f"Bearer {new_token}"})
+    assert res_fresh.status_code == 200
+

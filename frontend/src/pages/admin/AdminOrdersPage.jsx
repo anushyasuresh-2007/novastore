@@ -7,6 +7,15 @@ import {
 
 const STATUS_OPTIONS = ["ALL", "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"];
 
+const ALLOWED_STATUS_TRANSITIONS = {
+  PENDING: ["PENDING", "CONFIRMED", "CANCELLED"],
+  CONFIRMED: ["CONFIRMED", "SHIPPED", "CANCELLED"],
+  SHIPPED: ["SHIPPED", "DELIVERED", "CANCELLED"],
+  DELIVERED: ["DELIVERED"],
+  CANCELLED: ["CANCELLED"],
+};
+
+
 export default function AdminOrdersPage({ initialOrderRef = null }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -311,19 +320,27 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
                     className="admin-select"
                     value={selectedStatus}
                     onChange={(e) => setSelectedStatus(e.target.value)}
-                    disabled={updatingStatus}
+                    disabled={updatingStatus || (ALLOWED_STATUS_TRANSITIONS[selectedOrder.status]?.length <= 1)}
                   >
-                    <option value="PENDING">PENDING</option>
-                    <option value="CONFIRMED">CONFIRMED</option>
-                    <option value="SHIPPED">SHIPPED</option>
-                    <option value="DELIVERED">DELIVERED</option>
-                    <option value="CANCELLED">CANCELLED</option>
+                    {STATUS_OPTIONS.filter((s) => s !== "ALL").map((st) => {
+                      const allowed = ALLOWED_STATUS_TRANSITIONS[selectedOrder.status] || [];
+                      const isAllowed = allowed.includes(st);
+                      return (
+                        <option key={st} value={st} disabled={!isAllowed}>
+                          {st}{!isAllowed ? " (Not allowed)" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                   <button
                     type="button"
                     className="admin-btn admin-btn-sm admin-btn-primary"
                     onClick={handleStatusUpdate}
-                    disabled={updatingStatus || selectedStatus === selectedOrder.status}
+                    disabled={
+                      updatingStatus ||
+                      selectedStatus === selectedOrder.status ||
+                      !(ALLOWED_STATUS_TRANSITIONS[selectedOrder.status] || []).includes(selectedStatus)
+                    }
                   >
                     {updatingStatus ? "Updating..." : "Save Status"}
                   </button>

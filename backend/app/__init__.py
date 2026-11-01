@@ -15,6 +15,16 @@ def create_app(config_name: str | None = None) -> Flask:
     config_class = config_by_name.get(config_name, config_by_name["default"])
     app.config.from_object(config_class)
 
+    # Security check: warn if default insecure secret key is used in production
+    if config_name == "production" and app.config.get("SECRET_KEY") == "dev-secret-key-change-in-production":
+        import warnings
+        warnings.warn(
+            "CRITICAL SECURITY WARNING: Running production mode with default SECRET_KEY fallback! "
+            "Set a unique, cryptographically random SECRET_KEY environment variable.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
     # Initialize extensions
     CORS(
         app,
@@ -115,5 +125,43 @@ def create_app(config_name: str | None = None) -> Flask:
             db.session.add(admin)
             db.session.commit()
             print(f"Success! Administrator '{admin.username}' created successfully (ID: {admin.id}).")
+
+    @app.cli.command("change-admin-password")
+    def change_admin_password_cli():
+        """Interactively rotate an administrator's password securely."""
+        import getpass
+        from datetime import datetime, timezone
+        from app.models.admin import Admin
+
+        print("=== Novastore Administrator Password Rotation ===")
+        username = input("Enter admin username or email: ").strip()
+        if not username:
+            print("Error: Username/email cannot be blank.")
+            return
+
+        with app.app_context():
+            clean_id = username.lower()
+            admin = Admin.query.filter(
+                (Admin.username.ilike(clean_id)) | (Admin.email.ilike(clean_id))
+            ).first()
+            if not admin:
+                print(f"Error: Administrator '{username}' not found.")
+                return
+
+            new_password = getpass.getpass("Enter new secure password (min 6 chars): ")
+            if len(new_password) < 6:
+                print("Error: Password must be at least 6 characters.")
+                return
+
+            confirm = getpass.getpass("Confirm new password: ")
+            if new_password != confirm:
+                print("Error: Passwords do not match.")
+                return
+
+            admin.set_password(new_password)
+            admin.updated_at = datetime.now(timezone.utc)
+            db.session.commit()
+            print(f"Success! Password for administrator '{admin.username}' has been securely rotated.")
+            print("All previously issued session tokens have been automatically revoked.")
 
     return app

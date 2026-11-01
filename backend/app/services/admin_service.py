@@ -9,6 +9,16 @@ from app.models.order_item import OrderItem
 
 VALID_ORDER_STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]
 
+# State machine defining valid order lifecycle transitions
+ALLOWED_ORDER_STATUS_TRANSITIONS: Dict[str, set] = {
+    "PENDING": {"PENDING", "CONFIRMED", "CANCELLED"},
+    "CONFIRMED": {"CONFIRMED", "SHIPPED", "CANCELLED"},
+    "SHIPPED": {"SHIPPED", "DELIVERED", "CANCELLED"},
+    "DELIVERED": {"DELIVERED"},   # Final terminal state
+    "CANCELLED": {"CANCELLED"},   # Final terminal state
+}
+
+
 
 class AdminService:
     """Service encapsulating administrator operations and dashboard metrics."""
@@ -265,7 +275,7 @@ class AdminService:
 
     @classmethod
     def update_order_status(cls, id_or_ref: str | int, new_status: str) -> Order:
-        """Update an order's fulfillment status with controlled status validation."""
+        """Update an order's fulfillment status with controlled status transition validation."""
         order = cls.get_order(id_or_ref)
         if not order:
             raise LookupError(f"Order '{id_or_ref}' not found.")
@@ -274,6 +284,14 @@ class AdminService:
         if clean_status not in VALID_ORDER_STATUSES:
             raise ValueError(
                 f"Invalid order status '{new_status}'. Allowed values: {', '.join(VALID_ORDER_STATUSES)}"
+            )
+
+        current_status = order.status.upper() if order.status else "PENDING"
+        allowed_transitions = ALLOWED_ORDER_STATUS_TRANSITIONS.get(current_status, {current_status})
+        if clean_status not in allowed_transitions:
+            raise ValueError(
+                f"Cannot transition order from '{current_status}' to '{clean_status}'. "
+                f"Allowed transitions from '{current_status}': {', '.join(sorted(allowed_transitions))}"
             )
 
         order.status = clean_status

@@ -88,6 +88,45 @@ describe("Admin Dashboard Frontend Logic Tests", () => {
     }
   });
 
+  // State machine transition validator
+  const ALLOWED_ORDER_STATUS_TRANSITIONS = {
+    PENDING: ["PENDING", "CONFIRMED", "CANCELLED"],
+    CONFIRMED: ["CONFIRMED", "SHIPPED", "CANCELLED"],
+    SHIPPED: ["SHIPPED", "DELIVERED", "CANCELLED"],
+    DELIVERED: ["DELIVERED"],
+    CANCELLED: ["CANCELLED"],
+  };
+
+  const isAllowedStatusTransition = (currentStatus, targetStatus) => {
+    const current = String(currentStatus || "").trim().toUpperCase();
+    const target = String(targetStatus || "").trim().toUpperCase();
+    const allowed = ALLOWED_ORDER_STATUS_TRANSITIONS[current];
+    return Boolean(allowed && allowed.includes(target));
+  };
+
+  it("should allow valid forward status transitions", () => {
+    assert.equal(isAllowedStatusTransition("PENDING", "CONFIRMED"), true);
+    assert.equal(isAllowedStatusTransition("CONFIRMED", "SHIPPED"), true);
+    assert.equal(isAllowedStatusTransition("SHIPPED", "DELIVERED"), true);
+    assert.equal(isAllowedStatusTransition("CONFIRMED", "CANCELLED"), true);
+    assert.equal(isAllowedStatusTransition("SHIPPED", "CANCELLED"), true);
+  });
+
+  it("should reject invalid backwards or terminal status transitions", () => {
+    assert.equal(isAllowedStatusTransition("DELIVERED", "PENDING"), false);
+    assert.equal(isAllowedStatusTransition("DELIVERED", "SHIPPED"), false);
+    assert.equal(isAllowedStatusTransition("DELIVERED", "CANCELLED"), false);
+    assert.equal(isAllowedStatusTransition("CANCELLED", "CONFIRMED"), false);
+    assert.equal(isAllowedStatusTransition("CANCELLED", "SHIPPED"), false);
+    assert.equal(isAllowedStatusTransition("CONFIRMED", "PENDING"), false);
+  });
+
+  it("should allow idempotent status updates", () => {
+    assert.equal(isAllowedStatusTransition("DELIVERED", "DELIVERED"), true);
+    assert.equal(isAllowedStatusTransition("CANCELLED", "CANCELLED"), true);
+    assert.equal(isAllowedStatusTransition("CONFIRMED", "CONFIRMED"), true);
+  });
+
   // 3. Authorization Header Construction
   const buildAuthHeader = (token) => {
     if (!token) return {};

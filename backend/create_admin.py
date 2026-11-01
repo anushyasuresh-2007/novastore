@@ -55,7 +55,7 @@ def main():
     parser = argparse.ArgumentParser(description="Create or update Novastore Administrator account.")
     parser.add_argument("--username", help="Admin username (or env: ADMIN_USERNAME)")
     parser.add_argument("--email", help="Admin email address (or env: ADMIN_EMAIL)")
-    parser.add_argument("--password", help="Admin password (or env: ADMIN_PASSWORD)")
+    parser.add_argument("--password", help="[Discouraged] Admin password (prefer interactive prompt or ADMIN_PASSWORD env var)")
     parser.add_argument("--role", default="admin", help="Admin role (default: admin)")
     args = parser.parse_args()
 
@@ -63,13 +63,29 @@ def main():
     email = args.email or os.environ.get("ADMIN_EMAIL")
     password = args.password or os.environ.get("ADMIN_PASSWORD")
 
+    if args.password:
+        print(
+            "[SECURITY WARNING] Passing passwords via CLI arguments exposes them in process lists "
+            "and shell history. Prefer interactive entry or ADMIN_PASSWORD environment variable.",
+            file=sys.stderr
+        )
+
     # If parameters not provided via flags or env, prompt interactively
     if not username:
         username = input("Admin username: ").strip()
     if not email:
         email = input("Admin email: ").strip().lower()
     if not password:
-        password = getpass.getpass("Admin password (min 6 chars): ")
+        while True:
+            password = getpass.getpass("Admin password (min 6 chars): ")
+            if len(password) < 6:
+                print("Error: Password must be at least 6 characters.")
+                continue
+            confirm = getpass.getpass("Confirm admin password: ")
+            if password != confirm:
+                print("Error: Passwords do not match. Please try again.")
+                continue
+            break
 
     app = create_app()
     with app.app_context():

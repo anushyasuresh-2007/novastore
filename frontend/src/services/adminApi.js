@@ -69,6 +69,9 @@ async function authorizedFetch(endpoint, options = {}) {
     if (response.status === 401) {
       // Clear expired or invalid token
       clearAdminToken();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("admin:unauthorized"));
+      }
     }
     throw new Error(data.error || `Admin request failed (${response.status})`);
   }
