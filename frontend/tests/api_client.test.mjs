@@ -41,4 +41,19 @@ describe("Frontend API Client Tests", () => {
       "/api/products?category=Audio&min_price=50&max_price=200&sort=name_desc"
     );
   });
+
+  it("should construct query URL for new Photography category", () => {
+    const url = buildProductQueryUrl({ category: "Photography", sort: "price_desc" });
+    assert.equal(url, "/api/products?category=Photography&sort=price_desc");
+  });
+
+  it("should support search within Photography category", () => {
+    const url = buildProductQueryUrl({
+      search: "Camera",
+      category: "Photography",
+      minPrice: "100",
+    });
+    assert.equal(url, "/api/products?search=Camera&category=Photography&min_price=100");
+  });
 });
+

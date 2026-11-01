@@ -215,7 +215,7 @@ npm install
 
 The SQLite database file is stored in `backend/instance/store.db`.
 
-To initialize the database schema and populate it with 12 sample products:
+To initialize the database schema and populate it with 30 sample products across 6 categories (Electronics, Audio, Accessories, Home & Office, Wearables, and Photography):
 
 ```powershell
 # From D:\E-Commerce\backend
@@ -227,11 +227,12 @@ python seed.py
 Initializing database...
 Creating database tables...
 Seeding sample products...
-Successfully seeded 12 products into the database.
-Done! 12 products available in database.
+Successfully seeded 18 new products into the database.
+Done! 30 products available in database.
 ```
 
-*(Alternatively, you can use Flask CLI: `flask --app run.py reset-db`)*
+The database seeding logic is **idempotent and safe**: running `python seed.py` repeatedly will never overwrite existing product prices, never reset inventory for products with orders, and never create duplicate records.
+
 
 ---
 
@@ -260,7 +261,7 @@ npm run dev
 
 ## Automated Testing
 
-### 1. Backend Pytest Suite (46 Tests)
+### 1. Backend Pytest Suite (50 Tests)
 The backend tests run against an isolated in-memory SQLite database (`sqlite:///:memory:`) and never modify your development database.
 
 ```powershell
@@ -271,21 +272,21 @@ cd D:\E-Commerce
 
 *Expected Result:*
 ```text
-============================= 46 passed in 6.35s ==============================
+============================= 50 passed in 2.43s ==============================
 ```
 
 #### Test Suite Breakdown:
 - **`tests/test_app.py`** (1 test): Application factory and development configurations.
 - **`tests/test_database.py`** (5 tests): Seeding idempotency, transaction rollbacks, and SQLite `PRAGMA foreign_keys=ON`.
 - **`tests/test_models.py`** (4 tests): Non-negative price/stock check constraints, cascade deletions, and purchase snapshot retention.
-- **`tests/test_products_api.py`** (15 tests): Catalogue retrieval, category filters, price ranges, sort orders, product details, and 400/404 validation.
+- **`tests/test_products_api.py`** (19 tests): Catalogue retrieval, 30 products assertion, 6 categories including Photography, category filters, price ranges, sort orders, product details, and safe idempotent seeding.
 - **`tests/test_orders_api.py`** (12 tests): Checkout creation, customer validation, quantity checks, price tamper resistance, delivery fee rules, and reference lookup.
 - **`tests/test_edge_cases.py`** (8 tests): Reference format uniqueness, duplicate product ID aggregation, sequential stock depletion, Indian phone/PIN validation, and SQL injection safety.
 - **`tests/test_e2e_journey.py`** (1 test): Full 11-step customer shopping journey from browsing to database inventory deduction.
 
 ---
 
-### 2. Frontend Automated Tests (15 Tests)
+### 2. Frontend Automated Tests (17 Tests)
 Runs natively using the Node.js test runner:
 
 ```powershell
@@ -295,10 +296,10 @@ npm test
 
 *Expected Result:*
 ```text
-✔ Frontend API Client Tests (3 tests)
+✔ Frontend API Client Tests (5 tests)
 ✔ Shopping Cart Logic & State Tests (7 tests)
 ✔ Checkout Validation & Order Flow Tests (5 tests)
-ℹ tests 15 | pass 15 | fail 0
+ℹ tests 17 | pass 17 | fail 0
 ```
 
 ---
@@ -317,7 +318,7 @@ npm run build
 dist/index.html                   0.84 kB │ gzip:  0.46 kB
 dist/assets/index-D9-hX59_.css   30.18 kB │ gzip:  5.61 kB
 dist/assets/index-DFbLoTLi.js   267.35 kB │ gzip: 79.75 kB
-✓ built in ~5s
+✓ built in ~3s
 ```
 
 ---
@@ -390,11 +391,12 @@ Retrieve all available categories and product counts.
 ```json
 {
   "categories": [
-    { "name": "Accessories", "count": 1 },
-    { "name": "Audio", "count": 3 },
-    { "name": "Electronics", "count": 3 },
-    { "name": "Home & Office", "count": 3 },
-    { "name": "Wearables", "count": 2 }
+    { "name": "Accessories", "count": 4 },
+    { "name": "Audio", "count": 6 },
+    { "name": "Electronics", "count": 6 },
+    { "name": "Home & Office", "count": 6 },
+    { "name": "Photography", "count": 4 },
+    { "name": "Wearables", "count": 4 }
   ]
 }
 ```

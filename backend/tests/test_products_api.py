@@ -169,3 +169,71 @@ def test_get_categories(client):
         assert "name" in cat
         assert "count" in cat
         assert cat["count"] > 0
+
+
+def test_catalogue_has_thirty_products(client):
+    """Test that the expanded product catalogue has exactly 30 products."""
+    response = client.get("/api/products")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["count"] == 30
+    assert len(data["products"]) == 30
+
+
+def test_all_six_categories_and_photography(client):
+    """Test that all 6 categories including Photography exist and have items."""
+    response = client.get("/api/categories")
+    assert response.status_code == 200
+    data = response.get_json()
+    category_map = {c["name"]: c["count"] for c in data["categories"]}
+    expected_categories = {
+        "Electronics",
+        "Audio",
+        "Accessories",
+        "Home & Office",
+        "Wearables",
+        "Photography",
+    }
+    assert expected_categories.issubset(set(category_map.keys()))
+    assert category_map["Photography"] == 4
+
+
+def test_filter_photography_category(client):
+    """Test filtering specifically by the Photography category."""
+    response = client.get("/api/products?category=Photography")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["count"] == 4
+    names = [p["name"] for p in data["products"]]
+    assert "Professional 4K Mirrorless Camera" in names
+    assert "Carbon Fiber Lightweight Travel Tripod" in names
+    assert "Ultra-Bright Bi-Color LED Video Light" in names
+    assert "50mm f/1.8 Portrait Prime Lens" in names
+    for p in data["products"]:
+        assert p["category"] == "Photography"
+        assert p["stock_quantity"] > 0
+        assert p["price"] > 0
+
+
+def test_seed_db_is_idempotent_and_preserves_records(app):
+    """Test that repeated seed_db calls do not create duplicates or overwrite existing data."""
+    with app.app_context():
+        # First execution (already seeded in fixture)
+        count_first = seed_db()
+        assert count_first == 30
+
+        # Modify product 1 stock to simulate customer order deduction
+        from app.models.product import Product
+        from app.models.db import db
+        prod1 = db.session.get(Product, 1)
+        prod1.stock_quantity = 7
+        db.session.commit()
+
+        # Re-run seed_db
+        count_second = seed_db()
+        assert count_second == 30
+
+        # Verify product 1 stock remained at 7 and was not overwritten
+        prod1_after = db.session.get(Product, 1)
+        assert prod1_after.stock_quantity == 7
+
