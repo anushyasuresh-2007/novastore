@@ -6,6 +6,7 @@ from app.models.product import Product
 from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.admin import Admin
+from app.models.revoked_token import RevokedToken
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,22 @@ def ensure_schema_updates():
                     logger.info("Adding 'currency' column to order_items table...")
                     conn.execute(text("ALTER TABLE order_items ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'INR'"))
                     conn.commit()
+
+            # Ensure revoked_tokens table exists for session logout invalidation
+            res_rev = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='revoked_tokens'")).fetchone()
+            if not res_rev:
+                logger.info("Creating 'revoked_tokens' table for session invalidation...")
+                conn.execute(text("""
+                    CREATE TABLE revoked_tokens (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        token_sig VARCHAR(64) NOT NULL UNIQUE,
+                        revoked_at DATETIME NOT NULL,
+                        expires_at DATETIME NOT NULL
+                    )
+                """))
+                conn.execute(text("CREATE INDEX ix_revoked_tokens_token_sig ON revoked_tokens (token_sig)"))
+                conn.execute(text("CREATE INDEX ix_revoked_tokens_expires_at ON revoked_tokens (expires_at)"))
+                conn.commit()
     except Exception as exc:
         logger.warning(f"Schema update check notice: {exc}")
 

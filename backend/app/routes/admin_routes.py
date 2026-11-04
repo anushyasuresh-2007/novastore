@@ -1,5 +1,5 @@
 """Admin routes blueprint handling administrator authentication, dashboard, products CRUD, and orders."""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from app.services.auth_service import AuthService, admin_required
 from app.services.admin_service import AdminService, VALID_ORDER_STATUSES
 from app.services.rate_limiter import rate_limit
@@ -15,7 +15,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 @rate_limit(key_prefix="admin_login", default_limit=5, default_period=60)
 def admin_login():
     """
-    Authenticate administrator credentials and return signed authorization bearer token.
+    Authenticate administrator credentials and return secure HttpOnly session cookie.
     Accepts JSON: { "username": "..." (or "email"), "password": "..." }
     """
     data = request.get_json(silent=True) or {}
@@ -30,25 +30,105 @@ def admin_login():
         return jsonify({"error": "Invalid administrator credentials."}), 401
 
     token = AuthService.generate_token(admin)
-    return jsonify({
+    csrf_token = AuthService.generate_csrf_token(admin)
+
+    response = jsonify({
         "message": "Authentication successful.",
-        "token": token,
         "admin": admin.to_dict(),
-    }), 200
+        "csrf_token": csrf_token,
+    })
+
+    is_production = current_app.config.get("ENV") == "production" or not current_app.config.get("DEBUG", True)
+
+    # Secure HttpOnly admin session cookie (not accessible via JavaScript)
+    response.set_cookie(
+        "admin_session",
+        token,
+        httponly=True,
+        secure=is_production,
+        samesite="Strict",
+        max_age=7200,
+        path="/api/admin",
+    )
+    # Readable CSRF synchronizer token cookie for SPA client
+    response.set_cookie(
+        "csrf_token",
+        csrf_token,
+        httponly=False,
+        secure=is_production,
+        samesite="Strict",
+        max_age=7200,
+        path="/",
+    )
+    return response, 200
 
 
 @admin_bp.route("/logout", methods=["POST"])
 @admin_required
 def admin_logout():
-    """Log out the current administrator session."""
-    return jsonify({"message": "Administrator logged out successfully."}), 200
+    """Log out administrator, revoking the session token server-side and clearing cookies."""
+    token = getattr(request, "token", None)
+    if token:
+        AuthService.revoke_token(token)
+
+    response = jsonify({"message": "Administrator logged out successfully."})
+    is_production = current_app.config.get("ENV") == "production" or not current_app.config.get("DEBUG", True)
+    response.delete_cookie(
+        "admin_session",
+        path="/api/admin",
+        secure=is_production,
+        samesite="Strict",
+        httponly=True,
+    )
+    response.delete_cookie(
+        "csrf_token",
+        path="/",
+        secure=is_production,
+        samesite="Strict",
+        httponly=False,
+    )
+    return response, 200
 
 
 @admin_bp.route("/me", methods=["GET"])
 @admin_required
 def admin_me():
-    """Verify administrator session and retrieve authenticated profile."""
-    return jsonify({"admin": request.current_admin.to_dict()}), 200
+    """Verify administrator session and retrieve authenticated profile with fresh CSRF token."""
+    csrf_token = AuthService.generate_csrf_token(request.current_admin)
+    response = jsonify({
+        "admin": request.current_admin.to_dict(),
+        "csrf_token": csrf_token,
+    })
+    is_production = current_app.config.get("ENV") == "production" or not current_app.config.get("DEBUG", True)
+    response.set_cookie(
+        "csrf_token",
+        csrf_token,
+        httponly=False,
+        secure=is_production,
+        samesite="Strict",
+        max_age=7200,
+        path="/",
+    )
+    return response, 200
+
+
+@admin_bp.route("/csrf-token", methods=["GET"])
+@admin_required
+def get_csrf_token():
+    """Retrieve fresh synchronizer CSRF token for the authenticated administrator."""
+    csrf_token = AuthService.generate_csrf_token(request.current_admin)
+    response = jsonify({"csrf_token": csrf_token})
+    is_production = current_app.config.get("ENV") == "production" or not current_app.config.get("DEBUG", True)
+    response.set_cookie(
+        "csrf_token",
+        csrf_token,
+        httponly=False,
+        secure=is_production,
+        samesite="Strict",
+        max_age=7200,
+        path="/",
+    )
+    return response, 200
 
 
 # ============================================================================

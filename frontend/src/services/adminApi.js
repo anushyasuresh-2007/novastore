@@ -1,74 +1,70 @@
 /**
  * API Service for Novastore Administrator Dashboard.
- * Handles authentication headers, token persistence, and administrative CRUD endpoints.
+ * Uses secure HttpOnly cookie authentication ('admin_session') and synchronizer CSRF tokens.
+ * Tokens are never stored in localStorage to protect against XSS token exfiltration.
  */
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
-const ADMIN_TOKEN_KEY = "novastore_admin_token";
+
+// In-memory synchronizer CSRF token
+let currentCsrfToken = null;
 
 /**
- * Get stored administrator token from localStorage.
+ * Retrieve CSRF token from memory or non-HttpOnly readable cookie.
  */
-export function getAdminToken() {
-  try {
-    return localStorage.getItem(ADMIN_TOKEN_KEY);
-  } catch (err) {
-    console.error("Error reading admin token from localStorage:", err);
-    return null;
-  }
-}
-
-/**
- * Save administrator token to localStorage.
- */
-export function setAdminToken(token) {
-  try {
-    if (token) {
-      localStorage.setItem(ADMIN_TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(ADMIN_TOKEN_KEY);
+export function getCsrfToken() {
+  if (currentCsrfToken) return currentCsrfToken;
+  if (typeof document !== "undefined") {
+    const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    if (match) {
+      currentCsrfToken = decodeURIComponent(match[1]);
+      return currentCsrfToken;
     }
-  } catch (err) {
-    console.error("Error storing admin token:", err);
   }
+  return null;
 }
 
 /**
- * Remove administrator token from localStorage.
+ * Set in-memory CSRF token.
  */
-export function clearAdminToken() {
-  try {
-    localStorage.removeItem(ADMIN_TOKEN_KEY);
-  } catch (err) {
-    console.error("Error clearing admin token:", err);
-  }
+export function setCsrfToken(token) {
+  currentCsrfToken = token || null;
 }
 
 /**
- * Helper to make authorized requests with bearer token.
+ * Helper to make authorized requests with HttpOnly cookies and CSRF protection.
  */
 async function authorizedFetch(endpoint, options = {}) {
-  const token = getAdminToken();
+  const method = (options.method || "GET").toUpperCase();
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {}),
   };
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  // State-changing requests (POST, PUT, PATCH, DELETE) require a synchronizer CSRF token
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const csrf = getCsrfToken();
+    if (csrf) {
+      headers["X-CSRF-Token"] = csrf;
+    }
   }
 
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers,
+    credentials: "include", // Ensure browser sends HttpOnly admin_session cookie
   });
 
   const data = await response.json().catch(() => ({}));
 
+  // Automatically refresh in-memory CSRF token if returned in response
+  if (data.csrf_token) {
+    setCsrfToken(data.csrf_token);
+  }
+
   if (!response.ok) {
     if (response.status === 401) {
-      // Clear expired or invalid token
-      clearAdminToken();
+      setCsrfToken(null);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("admin:unauthorized"));
       }
@@ -81,11 +77,13 @@ async function authorizedFetch(endpoint, options = {}) {
 
 /**
  * Log in administrator with username/email and password.
+ * Session token is stored directly in an HttpOnly cookie by the server.
  */
 export async function adminLogin(identifier, password) {
   const response = await fetch(`${API_BASE}/admin/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ username: identifier, password }),
   });
 
@@ -95,29 +93,41 @@ export async function adminLogin(identifier, password) {
     throw new Error(data.error || "Login failed. Please verify credentials.");
   }
 
-  if (data.token) {
-    setAdminToken(data.token);
+  if (data.csrf_token) {
+    setCsrfToken(data.csrf_token);
   }
+
+  // Purge any legacy localStorage token from earlier versions
+  try {
+    localStorage.removeItem("novastore_admin_token");
+  } catch {}
 
   return data;
 }
 
 /**
- * Log out administrator session.
+ * Log out administrator session, invalidating session on the server and clearing cookies.
  */
 export async function adminLogout() {
   try {
     await authorizedFetch("/admin/logout", { method: "POST" });
   } finally {
-    clearAdminToken();
+    setCsrfToken(null);
+    try {
+      localStorage.removeItem("novastore_admin_token");
+    } catch {}
   }
 }
 
 /**
- * Verify current administrator session and fetch profile.
+ * Verify current administrator session and fetch profile with fresh CSRF token.
  */
 export async function fetchAdminMe() {
-  return authorizedFetch("/admin/me");
+  const data = await authorizedFetch("/admin/me");
+  if (data.csrf_token) {
+    setCsrfToken(data.csrf_token);
+  }
+  return data;
 }
 
 /**

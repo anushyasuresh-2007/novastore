@@ -13,6 +13,7 @@ INSECURE_SECRET_KEYS = {
     DEV_SECRET_FALLBACK,
     "change-this-to-a-secure-random-key-in-production",
 }
+MIN_PRODUCTION_SECRET_KEY_LENGTH = 32
 
 
 class Config:
@@ -26,6 +27,8 @@ class Config:
     RATELIMIT_LOGIN_PERIOD = int(os.environ.get("RATELIMIT_LOGIN_PERIOD", 60))
     RATELIMIT_ORDER_LIMIT = int(os.environ.get("RATELIMIT_ORDER_LIMIT", 10))
     RATELIMIT_ORDER_PERIOD = int(os.environ.get("RATELIMIT_ORDER_PERIOD", 60))
+    # Number of trusted upstream reverse proxies (e.g., 1 if behind Nginx or AWS ALB; 0 for direct connection)
+    TRUSTED_PROXIES_COUNT = int(os.environ.get("TRUSTED_PROXIES_COUNT", 0))
 
 
 class DevelopmentConfig(Config):
@@ -54,6 +57,7 @@ class TestingConfig(Config):
     )
     CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*")
     RATELIMIT_ENABLED = False
+    TRUSTED_PROXIES_COUNT = 0
 
 
 class ProductionConfig(Config):

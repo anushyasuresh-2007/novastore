@@ -4,8 +4,20 @@ from app import create_app
 from app.models.db import db
 from app.models.admin import Admin
 from app.services.rate_limiter import limiter
+from app.services.auth_service import AuthService, DEFAULT_MAX_AGE_SECONDS
 from create_admin import create_or_update_admin
 from rotate_admin_password import rotate_admin_password
+
+
+@pytest.fixture
+def admin_user(app):
+    """Fixture creating an active test admin."""
+    with app.app_context():
+        admin = Admin(username="sec_test_admin", email="sectest@example.com")
+        admin.set_password("AdminSecurePass123!")
+        db.session.add(admin)
+        db.session.commit()
+        return admin.id
 
 
 # ============================================================================
@@ -58,8 +70,24 @@ def test_production_default_fallback_secret_key_rejected(monkeypatch, insecure_f
     assert insecure_fallback not in err_msg
 
 
+def test_production_secret_key_too_short_rejected(monkeypatch):
+    """Test production startup strictly rejects SECRET_KEY shorter than 32 characters."""
+    short_key = "short-secret-under-32-chars!"  # 28 characters
+    monkeypatch.setenv("SECRET_KEY", short_key)
+    monkeypatch.setenv("CORS_ORIGINS", "https://novastore-example.com")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app("production")
+
+    err_msg = str(exc_info.value)
+    assert "CRITICAL SECURITY ERROR" in err_msg
+    assert "must be at least 32 characters" in err_msg
+    # Never print the actual secret key
+    assert short_key not in err_msg
+
+
 def test_production_valid_secret_key_accepted(monkeypatch):
-    """Test application startup succeeds in production with a unique valid SECRET_KEY."""
+    """Test application startup succeeds in production with a unique valid SECRET_KEY >= 32 chars."""
     safe_key = "a9f8b2c4e6d871350a4bf39801ec6d4352ab908e7f1234567890abcdef123456"
     monkeypatch.setenv("SECRET_KEY", safe_key)
     monkeypatch.setenv("CORS_ORIGINS", "https://novastore-example.com")
@@ -77,6 +105,15 @@ def test_development_safe_fallback_retained(monkeypatch):
     assert dev_app is not None
     assert dev_app.config["SECRET_KEY"] == "dev-secret-key-change-in-production"
     assert dev_app.config["DEBUG"] is True
+
+
+def test_production_debug_mode_disabled(monkeypatch):
+    """Test production application explicitly disables debug mode."""
+    safe_key = "a9f8b2c4e6d871350a4bf39801ec6d4352ab908e7f1234567890abcdef123456"
+    monkeypatch.setenv("SECRET_KEY", safe_key)
+    monkeypatch.setenv("CORS_ORIGINS", "https://novastore-example.com")
+    prod_app = create_app("production")
+    assert prod_app.config["DEBUG"] is False
 
 
 # ============================================================================
@@ -196,7 +233,7 @@ def test_rotate_admin_password_length_enforcement(app):
 
 
 # ============================================================================
-# TASK 4: Rate Limiting & 429 Response Tests
+# TASK 4: Rate Limiting, Proxy IP Resolution & 429 Response Tests
 # ============================================================================
 
 def test_admin_login_rate_limiting_triggers_429(app, client):
@@ -272,3 +309,292 @@ def test_rate_limiting_disabled_by_default_in_tests(app, client):
     for _ in range(15):
         res = client.get("/api/health")
         assert res.status_code == 200
+
+
+def test_spoofed_forwarded_headers_cannot_bypass_rate_limits(app, client):
+    """Verify that varying X-Forwarded-For headers do not bypass rate limits when TRUSTED_PROXIES_COUNT=0."""
+    limiter.reset()
+    app.config["RATELIMIT_ENABLED"] = True
+    app.config["RATELIMIT_ADMIN_LOGIN_LIMIT"] = 3
+    app.config["RATELIMIT_ADMIN_LOGIN_PERIOD"] = 60
+    app.config["TRUSTED_PROXIES_COUNT"] = 0
+
+    try:
+        # Send 3 requests each with a DIFFERENT spoofed X-Forwarded-For header
+        for i in range(3):
+            res = client.post("/api/admin/login",
+                headers={"X-Forwarded-For": f"203.0.113.{i+1}"},
+                json={"username": "attacker", "password": "wrongpassword"}
+            )
+            assert res.status_code == 401
+
+        # 4th request from same client socket (remote_addr='127.0.0.1') with another spoofed header
+        res4 = client.post("/api/admin/login",
+            headers={"X-Forwarded-For": "198.51.100.99"},
+            json={"username": "attacker", "password": "wrongpassword"}
+        )
+        # Must be rate limited to 429 because remote_addr was used, NOT the spoofed header
+        assert res4.status_code == 429
+        assert "Too many requests" in res4.get_json()["error"]
+    finally:
+        limiter.reset()
+        app.config["RATELIMIT_ENABLED"] = False
+
+
+def test_trusted_proxy_resolves_client_ip():
+    """Verify that when TRUSTED_PROXIES_COUNT=1, Werkzeug ProxyFix correctly resolves client IP."""
+    test_app = create_app("testing")
+    test_app.config["TRUSTED_PROXIES_COUNT"] = 1
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    test_app.wsgi_app = ProxyFix(test_app.wsgi_app, x_for=1)
+
+    captured_ips = []
+
+    @test_app.route("/test-ip")
+    def ip_endpoint():
+        from flask import request
+        captured_ips.append(limiter.get_client_ip())
+        return {"ip": limiter.get_client_ip()}
+
+    client = test_app.test_client()
+    # Upstream proxy peer is 127.0.0.1; X-Forwarded-For contains original client IP
+    res = client.get("/test-ip",
+        headers={"X-Forwarded-For": "203.0.113.195"},
+        environ_base={"REMOTE_ADDR": "127.0.0.1"}
+    )
+    assert res.status_code == 200
+    assert captured_ips[-1] == "203.0.113.195"
+
+
+# ============================================================================
+# TASK 5: Admin Token 2-Hour Lifetime Enforcement Tests
+# ============================================================================
+
+def test_admin_token_lifetime_reduced_to_2_hours(app, admin_user):
+    """Verify that admin tokens use a 2-hour (7200s) default expiration."""
+    assert DEFAULT_MAX_AGE_SECONDS == 7200
+
+    with app.app_context():
+        admin = db.session.get(Admin, admin_user)
+        token = AuthService.generate_token(admin)
+
+        # Valid within 2 hours
+        assert AuthService.verify_token(token, max_age=7200) is not None
+
+        # Expired if simulated time elapsed exceeds 2 hours
+        assert AuthService.verify_token(token, max_age=-1) is None
+
+
+# ============================================================================
+# PHASE 12 STEP 3B: Admin HttpOnly Cookie & CSRF Protection Tests
+# ============================================================================
+
+def test_admin_login_sets_httponly_cookie(client, admin_user):
+    """Test successful administrator login sets secure HttpOnly cookie and does not expose token in body."""
+    res = client.post("/api/admin/login", json={
+        "username": "sec_test_admin",
+        "password": "AdminSecurePass123!"
+    })
+    assert res.status_code == 200
+    data = res.get_json()
+
+    # 1. Token must NOT be in JSON response
+    assert "token" not in data
+    assert "csrf_token" in data
+    assert "successful" in data["message"].lower()
+    assert data["admin"]["username"] == "sec_test_admin"
+
+    # 2. Check Set-Cookie headers
+    all_cookies = "".join(res.headers.getlist("Set-Cookie"))
+    assert "admin_session=" in all_cookies
+    assert "HttpOnly" in all_cookies
+    assert "SameSite=Strict" in all_cookies
+    assert "Path=/api/admin" in all_cookies
+    assert "Max-Age=7200" in all_cookies
+
+    # 3. csrf_token cookie also set and readable by script (no HttpOnly on csrf_token cookie)
+    assert "csrf_token=" in all_cookies
+
+
+def test_protected_admin_endpoint_accepts_valid_cookie(client, admin_user):
+    """Test GET /api/admin/me works seamlessly with admin_session cookie."""
+    login_res = client.post("/api/admin/login", json={
+        "username": "sec_test_admin",
+        "password": "AdminSecurePass123!"
+    })
+    assert login_res.status_code == 200
+
+    # Test client automatically transmits cookies
+    res = client.get("/api/admin/me")
+    assert res.status_code == 200
+    assert res.get_json()["admin"]["username"] == "sec_test_admin"
+
+
+def test_cookie_auth_state_changing_missing_csrf_rejected(client, admin_user):
+    """Test state-changing requests using cookie auth without X-CSRF-Token are rejected with 403."""
+    client.post("/api/admin/login", json={
+        "username": "sec_test_admin",
+        "password": "AdminSecurePass123!"
+    })
+
+    # Attempt state-changing POST without X-CSRF-Token header
+    res = client.post("/api/admin/products",
+        headers={"Origin": "http://localhost:5173"},
+        json={
+            "name": "CSRF Test Product",
+            "price": 999.0,
+            "category": "Electronics",
+            "stock_quantity": 10,
+            "description": "Test"
+        }
+    )
+    assert res.status_code == 403
+    assert "Missing X-CSRF-Token" in res.get_json()["error"]
+
+
+def test_cookie_auth_state_changing_invalid_csrf_rejected(client, admin_user):
+    """Test state-changing requests using cookie auth with invalid X-CSRF-Token are rejected with 403."""
+    client.post("/api/admin/login", json={
+        "username": "sec_test_admin",
+        "password": "AdminSecurePass123!"
+    })
+
+    res = client.post("/api/admin/products",
+        headers={
+            "Origin": "http://localhost:5173",
+            "X-CSRF-Token": "completely-invalid-csrf-token"
+        },
+        json={
+            "name": "CSRF Test Product",
+            "price": 999.0,
+            "category": "Electronics",
+            "stock_quantity": 10,
+            "description": "Test"
+        }
+    )
+    assert res.status_code == 403
+    assert "Invalid or expired CSRF token" in res.get_json()["error"]
+
+
+def test_cookie_auth_state_changing_untrusted_origin_rejected(client, admin_user, app):
+    """Test state-changing requests using cookie auth from an untrusted origin are rejected with 403."""
+    app.config["CORS_ORIGINS"] = "http://localhost:5173"
+    try:
+        login_res = client.post("/api/admin/login", json={
+            "username": "sec_test_admin",
+            "password": "AdminSecurePass123!"
+        })
+        csrf_token = login_res.get_json()["csrf_token"]
+
+        res = client.post("/api/admin/products",
+            headers={
+                "Origin": "https://malicious-attacker.com",
+                "X-CSRF-Token": csrf_token
+            },
+            json={
+                "name": "CSRF Test Product",
+                "price": 999.0,
+                "category": "Electronics",
+                "stock_quantity": 10,
+                "description": "Test"
+            }
+        )
+        assert res.status_code == 403
+        assert "untrusted origin" in res.get_json()["error"].lower()
+    finally:
+        app.config["CORS_ORIGINS"] = "*"
+
+
+def test_cookie_auth_state_changing_valid_csrf_accepted(client, admin_user):
+    """Test state-changing requests using cookie auth with valid CSRF token and origin succeed."""
+    login_res = client.post("/api/admin/login", json={
+        "username": "sec_test_admin",
+        "password": "AdminSecurePass123!"
+    })
+    csrf_token = login_res.get_json()["csrf_token"]
+
+    res = client.post("/api/admin/products",
+        headers={
+            "Origin": "http://localhost:5173",
+            "X-CSRF-Token": csrf_token
+        },
+        json={
+            "name": "Valid CSRF Product",
+            "price": 1499.0,
+            "category": "Accessories",
+            "stock_quantity": 5,
+            "description": "Legitimate product creation"
+        }
+    )
+    assert res.status_code == 201
+    assert res.get_json()["product"]["name"] == "Valid CSRF Product"
+
+
+def test_admin_logout_revokes_token_and_clears_cookie(client, admin_user, app):
+    """Test logout revokes token in DB, clears cookie, and invalidates session."""
+    from app.models.revoked_token import RevokedToken
+
+    login_res = client.post("/api/admin/login", json={
+        "username": "sec_test_admin",
+        "password": "AdminSecurePass123!"
+    })
+    csrf_token = login_res.get_json()["csrf_token"]
+
+    # Logout
+    logout_res = client.post("/api/admin/logout",
+        headers={
+            "Origin": "http://localhost:5173",
+            "X-CSRF-Token": csrf_token
+        }
+    )
+    assert logout_res.status_code == 200
+    assert "logged out" in logout_res.get_json()["message"].lower()
+
+    # Set-Cookie clears admin_session with matching path and SameSite=Strict
+    all_cookies = "".join(logout_res.headers.getlist("Set-Cookie"))
+    assert "admin_session=" in all_cookies
+    assert "Max-Age=0" in all_cookies or "expires=Thu, 01 Jan 1970" in all_cookies
+    assert "SameSite=Strict" in all_cookies
+    assert "Path=/api/admin" in all_cookies
+
+    # RevokedToken entry exists in database
+    with app.app_context():
+        revoked_count = RevokedToken.query.count()
+        assert revoked_count >= 1
+
+    # Attempting to access protected endpoint fails
+    res_me = client.get("/api/admin/me")
+    assert res_me.status_code == 401
+
+
+def test_revoked_token_cannot_be_reused(client, admin_user, app):
+    """Test that a revoked token cannot be reused even if provided via Authorization Bearer header."""
+    with app.app_context():
+        admin = db.session.get(Admin, admin_user)
+        token = AuthService.generate_token(admin)
+        AuthService.revoke_token(token)
+
+    # Calling /api/admin/me with revoked token
+    res = client.get("/api/admin/me", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 401
+    assert "revoked" in res.get_json()["error"].lower() or "invalid" in res.get_json()["error"].lower()
+
+
+def test_storefront_orders_unaffected_by_csrf(client, app):
+    """Test customer storefront order placement does not require CSRF token or admin session."""
+    from app.database import seed_db
+    with app.app_context():
+        seed_db()
+
+    res = client.post("/api/orders", json={
+        "customer_name": "Test Customer",
+        "customer_email": "customer@example.com",
+        "customer_phone": "9876543210",
+        "delivery_address": "123 Test Street",
+        "city": "Mumbai",
+        "postal_code": "400001",
+        "items": [{"product_id": 1, "quantity": 1}]
+    })
+    assert res.status_code == 201
+    assert "order" in res.get_json()
+    assert res.get_json()["order"]["currency"] == "INR"

@@ -17,12 +17,12 @@ class InMemoryRateLimiter:
         self._lock = threading.Lock()
 
     def get_client_ip(self) -> str:
-        """Extract client IP, taking first IP from X-Forwarded-For if behind a proxy."""
-        x_forwarded_for = request.headers.get("X-Forwarded-For")
-        if x_forwarded_for:
-            client_ip = x_forwarded_for.split(",")[0].strip()
-            if client_ip:
-                return client_ip
+        """
+        Extract client IP for rate limiting.
+        By default, strictly uses request.remote_addr to prevent header spoofing from direct clients.
+        When a reverse proxy is deployed and TRUSTED_PROXIES_COUNT > 0, Werkzeug's ProxyFix
+        middleware safely resolves request.remote_addr from the configured trusted hops.
+        """
         return request.remote_addr or "127.0.0.1"
 
     def is_allowed(self, key: str, limit: int, period: int) -> tuple[bool, int]:

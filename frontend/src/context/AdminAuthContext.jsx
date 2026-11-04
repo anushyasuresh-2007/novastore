@@ -3,38 +3,28 @@ import {
   adminLogin as apiLogin,
   adminLogout as apiLogout,
   fetchAdminMe,
-  getAdminToken,
 } from "../services/adminApi";
 
 const AdminAuthContext = createContext();
 
 export function AdminAuthProvider({ children }) {
   const [admin, setAdmin] = useState(null);
-  const [token, setToken] = useState(() => getAdminToken());
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "products" | "orders"
 
-  // Verify session on mount if token is present
+  // Verify session on mount via HttpOnly cookie
   useEffect(() => {
     let isMounted = true;
     async function verifySession() {
-      const storedToken = getAdminToken();
-      if (!storedToken) {
-        if (isMounted) setLoading(false);
-        return;
-      }
-
       try {
         const data = await fetchAdminMe();
         if (isMounted && data.admin) {
           setAdmin(data.admin);
-          setToken(storedToken);
         }
       } catch (err) {
-        console.warn("Stored admin token was invalid or expired:", err);
+        // No active session or expired cookie
         if (isMounted) {
           setAdmin(null);
-          setToken(null);
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -51,7 +41,6 @@ export function AdminAuthProvider({ children }) {
   useEffect(() => {
     const handleUnauthorized = () => {
       setAdmin(null);
-      setToken(null);
     };
 
     if (typeof window !== "undefined") {
@@ -65,7 +54,6 @@ export function AdminAuthProvider({ children }) {
   const login = async (username, password) => {
     const data = await apiLogin(username, password);
     setAdmin(data.admin);
-    setToken(data.token);
     return data;
   };
 
@@ -76,18 +64,17 @@ export function AdminAuthProvider({ children }) {
       console.warn("Logout request failed:", err);
     } finally {
       setAdmin(null);
-      setToken(null);
       setActiveTab("dashboard");
     }
   };
 
-  const isAuthenticated = Boolean(admin && token);
+  const isAuthenticated = Boolean(admin);
 
   return (
     <AdminAuthContext.Provider
       value={{
         admin,
-        token,
+        token: null, // Legacy compatibility
         isAuthenticated,
         loading,
         activeTab,

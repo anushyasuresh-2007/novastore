@@ -49,28 +49,34 @@ def seed_catalog(app):
 # ============================================================================
 
 def test_admin_login_success_with_username(client, admin_user):
-    """Test successful administrator login using username."""
+    """Test successful administrator login sets secure HttpOnly cookie and omits token from body."""
     response = client.post("/api/admin/login", json={
         "username": "superadmin",
         "password": "AdminSecurePass123!",
     })
     assert response.status_code == 200
+    set_cookie = response.headers.get("Set-Cookie", "")
+    assert "admin_session=" in set_cookie
+    assert "HttpOnly" in set_cookie
     data = response.get_json()
-    assert "token" in data
+    assert "token" not in data  # Token strictly omitted from JSON body
+    assert "csrf_token" in data
     assert data["admin"]["username"] == "superadmin"
     assert data["admin"]["email"] == "superadmin@novastore.com"
     assert "password_hash" not in data["admin"]
 
 
 def test_admin_login_success_with_email(client, admin_user):
-    """Test successful administrator login using email."""
+    """Test successful administrator login using email sets session cookie."""
     response = client.post("/api/admin/login", json={
         "email": "superadmin@novastore.com",
         "password": "AdminSecurePass123!",
     })
     assert response.status_code == 200
+    assert "admin_session=" in response.headers.get("Set-Cookie", "")
     data = response.get_json()
-    assert "token" in data
+    assert "token" not in data
+    assert "csrf_token" in data
     assert data["admin"]["username"] == "superadmin"
 
 
@@ -587,7 +593,8 @@ def test_admin_password_rotation_invalidates_session(client, app, admin_user):
     # 3. Verify previous token is now rejected with 401 Unauthorized
     res_after_rotation = client.get("/api/admin/me", headers=headers)
     assert res_after_rotation.status_code == 401
-    assert "Invalid or expired" in res_after_rotation.get_json()["error"]
+    err = res_after_rotation.get_json()["error"].lower()
+    assert "invalid" in err or "revoked" in err or "expired" in err
 
     # 4. Verify old password cannot log in
     res_old_login = client.post("/api/admin/login", json={
@@ -596,15 +603,16 @@ def test_admin_password_rotation_invalidates_session(client, app, admin_user):
     })
     assert res_old_login.status_code == 401
 
-    # 5. Verify new password can log in and receives fresh working token
+    # 5. Verify new password can log in and receives fresh working session via cookie
     res_new_login = client.post("/api/admin/login", json={
         "username": "superadmin",
         "password": "BrandNewSecurePassword456!"
     })
     assert res_new_login.status_code == 200
-    new_token = res_new_login.get_json()["token"]
+    assert "token" not in res_new_login.get_json()
+    assert "admin_session=" in res_new_login.headers.get("Set-Cookie", "")
 
-    # Fresh token works
-    res_fresh = client.get("/api/admin/me", headers={"Authorization": f"Bearer {new_token}"})
+    # Fresh session works via cookie
+    res_fresh = client.get("/api/admin/me")
     assert res_fresh.status_code == 200
 

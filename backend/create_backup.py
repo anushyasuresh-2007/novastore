@@ -16,7 +16,7 @@ backup_dir = os.path.abspath('../backups')
 os.makedirs(backup_dir, exist_ok=True)
 
 timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-backup_filename = f'store-before-inr-{timestamp}.db'
+backup_filename = f'novastore-backup-{timestamp}.db'
 backup_path = os.path.join(backup_dir, backup_filename)
 print('Target backup path:', backup_path)
 

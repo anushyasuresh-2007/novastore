@@ -1,7 +1,7 @@
 import os
 from flask import Flask, jsonify
 from flask_cors import CORS
-from app.config import config_by_name, INSECURE_SECRET_KEYS
+from app.config import config_by_name, INSECURE_SECRET_KEYS, MIN_PRODUCTION_SECRET_KEY_LENGTH
 from app.models.db import db
 
 MIN_ADMIN_PASSWORD_LENGTH = 8
@@ -50,6 +50,11 @@ def create_app(config_name: str | None = None) -> Flask:
                 "CRITICAL SECURITY ERROR: Insecure or default development SECRET_KEY cannot be used in production. "
                 "Application startup aborted. Configure a cryptographically secure random secret key."
             )
+        if len(str(secret_key).strip()) < MIN_PRODUCTION_SECRET_KEY_LENGTH:
+            raise RuntimeError(
+                f"CRITICAL SECURITY ERROR: Production SECRET_KEY must be at least "
+                f"{MIN_PRODUCTION_SECRET_KEY_LENGTH} characters long. Application startup aborted."
+            )
 
         # TASK 2: CORS hardening in production
         cors_raw = app.config.get("CORS_ORIGINS")
@@ -84,6 +89,19 @@ def create_app(config_name: str | None = None) -> Flask:
         supports_credentials=True,
     )
     db.init_app(app)
+
+    # Configure trusted reverse proxy support if explicitly configured
+    trusted_proxies = app.config.get("TRUSTED_PROXIES_COUNT", 0)
+    if isinstance(trusted_proxies, int) and trusted_proxies > 0:
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=trusted_proxies,
+            x_proto=trusted_proxies,
+            x_host=trusted_proxies,
+            x_port=trusted_proxies,
+            x_prefix=trusted_proxies,
+        )
 
     # Register Blueprints
     from app.routes.product_routes import product_bp
