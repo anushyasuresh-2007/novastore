@@ -7,4 +7,3 @@ from app.models.admin import Admin
 from app.models.revoked_token import RevokedToken
 
 __all__ = ["db", "Product", "Order", "OrderItem", "Admin", "RevokedToken"]
-

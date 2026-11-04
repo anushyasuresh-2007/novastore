@@ -18,4 +18,3 @@ __all__ = [
     "AdminService",
     "VALID_ORDER_STATUSES",
 ]
-

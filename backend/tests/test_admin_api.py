@@ -615,4 +615,3 @@ def test_admin_password_rotation_invalidates_session(client, app, admin_user):
     # Fresh session works via cookie
     res_fresh = client.get("/api/admin/me")
     assert res_fresh.status_code == 200
-

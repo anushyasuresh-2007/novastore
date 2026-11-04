@@ -76,4 +76,3 @@ class ProductService:
 
         results = query.group_by(Product.category).order_by(Product.category.asc()).all()
         return [{"name": cat, "count": count} for cat, count in results]
-
