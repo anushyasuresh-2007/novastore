@@ -91,6 +91,7 @@ def test_production_valid_secret_key_accepted(monkeypatch):
     safe_key = "a9f8b2c4e6d871350a4bf39801ec6d4352ab908e7f1234567890abcdef123456"
     monkeypatch.setenv("SECRET_KEY", safe_key)
     monkeypatch.setenv("CORS_ORIGINS", "https://novastore-example.com")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@ep-neon.tech/novastore_prod?sslmode=require")
 
     prod_app = create_app("production")
     assert prod_app is not None
@@ -112,6 +113,7 @@ def test_production_debug_mode_disabled(monkeypatch):
     safe_key = "a9f8b2c4e6d871350a4bf39801ec6d4352ab908e7f1234567890abcdef123456"
     monkeypatch.setenv("SECRET_KEY", safe_key)
     monkeypatch.setenv("CORS_ORIGINS", "https://novastore-example.com")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@ep-neon.tech/novastore_prod?sslmode=require")
     prod_app = create_app("production")
     assert prod_app.config["DEBUG"] is False
 
@@ -151,6 +153,7 @@ def test_production_explicit_cors_origins_accepted(monkeypatch):
     """Test production mode accepts explicit trusted origins and handles preflight."""
     monkeypatch.setenv("SECRET_KEY", "valid-cryptographic-prod-secret-987654321")
     monkeypatch.setenv("CORS_ORIGINS", "https://store.example.com, https://admin.example.com")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@ep-neon.tech/novastore_prod?sslmode=require")
 
     prod_app = create_app("production")
     client = prod_app.test_client()
@@ -160,6 +163,115 @@ def test_production_explicit_cors_origins_accepted(monkeypatch):
     assert res.status_code == 200
     assert res.headers.get("Access-Control-Allow-Origin") == "https://store.example.com"
     assert res.headers.get("Access-Control-Allow-Credentials") == "true"
+
+
+# ============================================================================
+# TASK 2B: Production Database Fail-Safe Tests
+# ============================================================================
+
+def test_production_missing_database_url_fails_startup(monkeypatch):
+    """Test production startup strictly fails when DATABASE_URL is missing."""
+    monkeypatch.setenv("SECRET_KEY", "valid-cryptographic-prod-secret-987654321")
+    monkeypatch.setenv("CORS_ORIGINS", "https://store.example.com")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app("production")
+
+    err_msg = str(exc_info.value)
+    assert "CRITICAL CONFIGURATION ERROR" in err_msg
+    assert "DATABASE_URL is not configured for production" in err_msg
+
+
+@pytest.mark.parametrize("empty_val", ["", "   ", "\t\n"])
+def test_production_empty_database_url_fails_startup(monkeypatch, empty_val):
+    """Test production startup strictly fails when DATABASE_URL is empty or whitespace."""
+    monkeypatch.setenv("SECRET_KEY", "valid-cryptographic-prod-secret-987654321")
+    monkeypatch.setenv("CORS_ORIGINS", "https://store.example.com")
+    monkeypatch.setenv("DATABASE_URL", empty_val)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app("production")
+
+    err_msg = str(exc_info.value)
+    assert "CRITICAL CONFIGURATION ERROR" in err_msg
+    assert "DATABASE_URL is not configured for production" in err_msg
+
+
+@pytest.mark.parametrize("unsupported_url", [
+    "mysql://user:pass@localhost:3306/novastore",
+    "sqlite:///store.db",
+    "sqlite:///:memory:",
+    "ftp://example.com/db.sqlite",
+    "redis://localhost:6379/0",
+    "not-a-valid-url-without-scheme",
+])
+def test_production_unsupported_database_url_scheme_fails_startup(monkeypatch, unsupported_url):
+    """Test production startup strictly rejects unsupported database schemes and malformed URLs."""
+    monkeypatch.setenv("SECRET_KEY", "valid-cryptographic-prod-secret-987654321")
+    monkeypatch.setenv("CORS_ORIGINS", "https://store.example.com")
+    monkeypatch.setenv("DATABASE_URL", unsupported_url)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app("production")
+
+    err_msg = str(exc_info.value)
+    assert "CRITICAL CONFIGURATION ERROR" in err_msg
+    assert ("Unsupported database scheme" in err_msg or "missing URL scheme" in err_msg)
+
+
+def test_production_malformed_database_url_missing_host_fails_startup(monkeypatch):
+    """Test production startup rejects PostgreSQL URL missing host."""
+    monkeypatch.setenv("SECRET_KEY", "valid-cryptographic-prod-secret-987654321")
+    monkeypatch.setenv("CORS_ORIGINS", "https://store.example.com")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app("production")
+
+    err_msg = str(exc_info.value)
+    assert "CRITICAL CONFIGURATION ERROR" in err_msg
+    assert "missing database host" in err_msg
+
+
+def test_production_postgres_url_normalization(monkeypatch):
+    """Test postgres:// scheme is automatically normalized to postgresql+psycopg2:// in production."""
+    monkeypatch.setenv("SECRET_KEY", "valid-cryptographic-prod-secret-987654321")
+    monkeypatch.setenv("CORS_ORIGINS", "https://store.example.com")
+    monkeypatch.setenv("DATABASE_URL", "postgres://neon_user:neon_pass@ep-cool.neon.tech:5432/novastore")
+
+    prod_app = create_app("production")
+    assert prod_app.config["SQLALCHEMY_DATABASE_URI"] == (
+        "postgresql+psycopg2://neon_user:neon_pass@ep-cool.neon.tech:5432/novastore"
+    )
+
+
+def test_production_postgresql_url_preserved(monkeypatch):
+    """Test valid postgresql:// URL with query parameters is normalized with psycopg2 driver."""
+    valid_url = "postgresql://neon_user:neon_pass@ep-cool.neon.tech:5432/novastore?sslmode=require"
+    monkeypatch.setenv("SECRET_KEY", "valid-cryptographic-prod-secret-987654321")
+    monkeypatch.setenv("CORS_ORIGINS", "https://store.example.com")
+    monkeypatch.setenv("DATABASE_URL", valid_url)
+
+    prod_app = create_app("production")
+    assert prod_app.config["SQLALCHEMY_DATABASE_URI"] == (
+        "postgresql+psycopg2://neon_user:neon_pass@ep-cool.neon.tech:5432/novastore?sslmode=require"
+    )
+
+
+def test_development_retains_sqlite_default(monkeypatch):
+    """Test development configuration defaults to local SQLite when DATABASE_URL is unset."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    dev_app = create_app("development")
+    assert dev_app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:///")
+    assert "store.db" in dev_app.config["SQLALCHEMY_DATABASE_URI"]
+
+
+def test_testing_retains_sqlite_in_memory_default(monkeypatch):
+    """Test testing configuration defaults to in-memory SQLite when TEST_DATABASE_URL is unset."""
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    test_app = create_app("testing")
+    assert test_app.config["SQLALCHEMY_DATABASE_URI"] == "sqlite:///:memory:"
 
 
 # ============================================================================

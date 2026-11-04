@@ -1,7 +1,12 @@
 import os
 from flask import Flask, jsonify
 from flask_cors import CORS
-from app.config import config_by_name, INSECURE_SECRET_KEYS, MIN_PRODUCTION_SECRET_KEY_LENGTH
+from app.config import (
+    config_by_name,
+    INSECURE_SECRET_KEYS,
+    MIN_PRODUCTION_SECRET_KEY_LENGTH,
+    validate_production_database_url,
+)
 from app.models.db import db
 
 MIN_ADMIN_PASSWORD_LENGTH = 8
@@ -70,6 +75,13 @@ def create_app(config_name: str | None = None) -> Flask:
                 "Application startup aborted. Specify explicit allowed origin(s) in CORS_ORIGINS."
             )
         cors_origins = parsed_origins
+
+        # TASK 3: Production DATABASE_URL enforcement & fail-safe
+        # Production strictly requires an explicitly configured, valid PostgreSQL connection URL.
+        # Silent fallback to SQLite is strictly forbidden in production mode.
+        raw_db_url = os.environ.get("DATABASE_URL") or app.config.get("SQLALCHEMY_DATABASE_URI")
+        validated_db_url = validate_production_database_url(raw_db_url)
+        app.config["SQLALCHEMY_DATABASE_URI"] = validated_db_url
     else:
         if "SECRET_KEY" in os.environ and config_name != "testing":
             app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
@@ -91,6 +103,10 @@ def create_app(config_name: str | None = None) -> Flask:
     db.init_app(app)
 
     # Configure trusted reverse proxy support if explicitly configured
+    # CAUTION: Do NOT set TRUSTED_PROXIES_COUNT > 0 without verifying the exact provider proxy chain.
+    # Render and similar platforms route traffic through multiple hops or internal load balancers.
+    # When TRUSTED_PROXIES_COUNT=0 (default), ProxyFix is NOT installed and request.remote_addr
+    # is strictly used, preventing untrusted X-Forwarded-For headers from spoofing client IPs.
     trusted_proxies = app.config.get("TRUSTED_PROXIES_COUNT", 0)
     if isinstance(trusted_proxies, int) and trusted_proxies > 0:
         from werkzeug.middleware.proxy_fix import ProxyFix

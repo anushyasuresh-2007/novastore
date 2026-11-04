@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 # Base directory for backend
@@ -15,6 +16,67 @@ INSECURE_SECRET_KEYS = {
 }
 MIN_PRODUCTION_SECRET_KEY_LENGTH = 32
 
+SUPPORTED_PRODUCTION_DATABASE_SCHEMES = ("postgresql", "postgres", "postgresql+psycopg2")
+
+
+def normalize_database_url(url: str | None) -> str | None:
+    """Normalize database connection URL to ensure dialect compatibility (e.g. postgres:// or postgresql:// -> postgresql+psycopg2://)."""
+    if not url or not str(url).strip():
+        return None
+    clean_url = str(url).strip()
+    if clean_url.startswith("postgres://"):
+        return clean_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    if clean_url.startswith("postgresql://"):
+        return clean_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return clean_url
+
+
+def validate_production_database_url(url: str | None) -> str:
+    """Validate and normalize DATABASE_URL for production deployment.
+
+    Raises RuntimeError if URL is missing, empty, malformed, or uses an unsupported scheme.
+    Credentials and query parameters are never echoed into error messages.
+    """
+    if not url or not str(url).strip():
+        raise RuntimeError(
+            "CRITICAL CONFIGURATION ERROR: DATABASE_URL is not configured for production. "
+            "Application startup aborted. An explicit PostgreSQL database URL must be provided."
+        )
+
+    clean_url = str(url).strip()
+    try:
+        parsed = urlparse(clean_url)
+    except Exception as exc:
+        raise RuntimeError(
+            f"CRITICAL CONFIGURATION ERROR: Malformed DATABASE_URL: {exc}"
+        ) from exc
+
+    if not parsed.scheme:
+        raise RuntimeError(
+            "CRITICAL CONFIGURATION ERROR: Malformed DATABASE_URL: missing URL scheme. "
+            "Production requires a PostgreSQL database (postgresql:// or postgres://)."
+        )
+
+    scheme_lower = parsed.scheme.lower()
+    if scheme_lower not in SUPPORTED_PRODUCTION_DATABASE_SCHEMES:
+        raise RuntimeError(
+            f"CRITICAL CONFIGURATION ERROR: Unsupported database scheme '{parsed.scheme}'. "
+            "Production requires a PostgreSQL database (postgresql:// or postgres://)."
+        )
+
+    if not parsed.netloc:
+        raise RuntimeError(
+            "CRITICAL CONFIGURATION ERROR: Malformed DATABASE_URL: missing database host/network location."
+        )
+
+    # Normalize postgres:// or postgresql:// to postgresql+psycopg2:// for psycopg2 driver compatibility
+    if clean_url.startswith("postgres://"):
+        clean_url = clean_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif clean_url.startswith("postgresql://"):
+        clean_url = clean_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    return clean_url
+
 
 class Config:
     """Base application configuration."""
@@ -27,7 +89,10 @@ class Config:
     RATELIMIT_LOGIN_PERIOD = int(os.environ.get("RATELIMIT_LOGIN_PERIOD", 60))
     RATELIMIT_ORDER_LIMIT = int(os.environ.get("RATELIMIT_ORDER_LIMIT", 10))
     RATELIMIT_ORDER_PERIOD = int(os.environ.get("RATELIMIT_ORDER_PERIOD", 60))
-    # Number of trusted upstream reverse proxies (e.g., 1 if behind Nginx or AWS ALB; 0 for direct connection)
+    # Number of trusted upstream reverse proxies (e.g., 0 for direct connection or unknown upstream).
+    # NOTE: Hosting provider proxy chains (e.g., Render, Cloudflare, AWS ALB) must be verified
+    # against official provider documentation before configuring in production.
+    # Default is 0: untrusted forwarded headers (X-Forwarded-For, etc.) will be strictly ignored.
     TRUSTED_PROXIES_COUNT = int(os.environ.get("TRUSTED_PROXIES_COUNT", 0))
 
 
@@ -36,9 +101,10 @@ class DevelopmentConfig(Config):
     DEBUG = True
     database_dir = BASE_DIR / "instance"
     database_dir.mkdir(parents=True, exist_ok=True)
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL",
-        f"sqlite:///{database_dir / 'store.db'}"
+    _default_db = f"sqlite:///{database_dir / 'store.db'}"
+    SQLALCHEMY_DATABASE_URI = (
+        normalize_database_url(os.environ.get("DATABASE_URL"))
+        or _default_db
     )
     CORS_ORIGINS = os.environ.get(
         "CORS_ORIGINS",
@@ -64,12 +130,8 @@ class ProductionConfig(Config):
     """Production environment configuration."""
     DEBUG = False
     ENV = "production"
-    database_dir = BASE_DIR / "instance"
-    database_dir.mkdir(parents=True, exist_ok=True)
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL",
-        f"sqlite:///{database_dir / 'store.db'}"
-    )
+    # Production strictly requires an explicitly supplied DATABASE_URL; no silent fallback to SQLite
+    SQLALCHEMY_DATABASE_URI = normalize_database_url(os.environ.get("DATABASE_URL"))
     # Production strictly requires explicit secrets and CORS origins
     SECRET_KEY = os.environ.get("SECRET_KEY")
     CORS_ORIGINS = os.environ.get("CORS_ORIGINS")
