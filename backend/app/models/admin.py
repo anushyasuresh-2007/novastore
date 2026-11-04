@@ -3,6 +3,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from app.models.db import db
 
 
+MIN_ADMIN_PASSWORD_LENGTH = 8
+
+
 class Admin(db.Model):
     """Administrator user model for dashboard authentication and authorization."""
     __tablename__ = "admins"
@@ -28,8 +31,8 @@ class Admin(db.Model):
 
     def set_password(self, password: str) -> None:
         """Hash and store password using Werkzeug cryptographic hashing."""
-        if not password or len(password) < 6:
-            raise ValueError("Password must be at least 6 characters long.")
+        if not password or len(password) < MIN_ADMIN_PASSWORD_LENGTH:
+            raise ValueError(f"Password must be at least {MIN_ADMIN_PASSWORD_LENGTH} characters long.")
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password: str) -> bool:

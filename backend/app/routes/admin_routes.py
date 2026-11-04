@@ -2,6 +2,7 @@
 from flask import Blueprint, request, jsonify
 from app.services.auth_service import AuthService, admin_required
 from app.services.admin_service import AdminService, VALID_ORDER_STATUSES
+from app.services.rate_limiter import rate_limit
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 
@@ -11,6 +12,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 # ============================================================================
 
 @admin_bp.route("/login", methods=["POST"])
+@rate_limit(key_prefix="admin_login", default_limit=5, default_period=60)
 def admin_login():
     """
     Authenticate administrator credentials and return signed authorization bearer token.

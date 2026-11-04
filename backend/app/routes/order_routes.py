@@ -5,6 +5,7 @@ from app.services.order_service import (
     OrderValidationError,
     InsufficientStockError,
 )
+from app.services.rate_limiter import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,7 @@ order_bp = Blueprint("orders", __name__, url_prefix="/api")
 
 
 @order_bp.route("/orders", methods=["POST"])
+@rate_limit(key_prefix="order_create", default_limit=10, default_period=60)
 def create_order():
     """
     Create a new order, verifying stock and recalculating prices on the server.

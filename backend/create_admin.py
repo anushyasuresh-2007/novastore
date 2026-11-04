@@ -15,14 +15,17 @@ from app.models.admin import Admin
 from app.database import init_db
 
 
+MIN_ADMIN_PASSWORD_LENGTH = 8
+
+
 def create_or_update_admin(username: str, email: str, password: str, role: str = "admin") -> Admin:
     """Create a new admin or update existing admin's password securely."""
     if not username or len(username) < 3:
         raise ValueError("Username must be at least 3 characters.")
     if not email or "@" not in email:
         raise ValueError("Valid email address is required.")
-    if not password or len(password) < 6:
-        raise ValueError("Password must be at least 6 characters.")
+    if not password or len(password) < MIN_ADMIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {MIN_ADMIN_PASSWORD_LENGTH} characters.")
 
     existing = Admin.query.filter(
         (Admin.username == username.strip()) | (Admin.email == email.strip().lower())
@@ -77,9 +80,9 @@ def main():
         email = input("Admin email: ").strip().lower()
     if not password:
         while True:
-            password = getpass.getpass("Admin password (min 6 chars): ")
-            if len(password) < 6:
-                print("Error: Password must be at least 6 characters.")
+            password = getpass.getpass(f"Admin password (min {MIN_ADMIN_PASSWORD_LENGTH} chars): ")
+            if len(password) < MIN_ADMIN_PASSWORD_LENGTH:
+                print(f"Error: Password must be at least {MIN_ADMIN_PASSWORD_LENGTH} characters.")
                 continue
             confirm = getpass.getpass("Confirm admin password: ")
             if password != confirm:

@@ -16,6 +16,9 @@ from app.models.admin import Admin
 from app.database import init_db
 
 
+MIN_ADMIN_PASSWORD_LENGTH = 8
+
+
 def rotate_admin_password(username: str, new_password: str) -> Admin:
     """
     Update an administrator's password and touch updated_at.
@@ -23,8 +26,8 @@ def rotate_admin_password(username: str, new_password: str) -> Admin:
     """
     if not username:
         raise ValueError("Username or email is required.")
-    if not new_password or len(new_password) < 6:
-        raise ValueError("New password must be at least 6 characters long.")
+    if not new_password or len(new_password) < MIN_ADMIN_PASSWORD_LENGTH:
+        raise ValueError(f"New password must be at least {MIN_ADMIN_PASSWORD_LENGTH} characters long.")
 
     clean_id = username.strip().lower()
     admin = Admin.query.filter(
@@ -82,9 +85,9 @@ def main():
         password = args.password or os.environ.get("NEW_ADMIN_PASSWORD")
         if not password:
             while True:
-                password = getpass.getpass("Enter new admin password (min 6 chars): ")
-                if len(password) < 6:
-                    print("Error: Password must be at least 6 characters long.")
+                password = getpass.getpass(f"Enter new admin password (min {MIN_ADMIN_PASSWORD_LENGTH} chars): ")
+                if len(password) < MIN_ADMIN_PASSWORD_LENGTH:
+                    print(f"Error: Password must be at least {MIN_ADMIN_PASSWORD_LENGTH} characters long.")
                     continue
                 confirm = getpass.getpass("Confirm new admin password: ")
                 if password != confirm:
