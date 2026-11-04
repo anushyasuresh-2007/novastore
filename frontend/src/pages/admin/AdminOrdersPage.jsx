@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   fetchAdminOrders,
   fetchAdminOrderById,
@@ -33,10 +33,45 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
   const [selectedStatus, setSelectedStatus] = useState("");
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
+  // Focus management refs
+  const orderModalTriggerRef = useRef(null);
+  const closeModalBtnRef = useRef(null);
+
   const notify = (msg, type = "success") => {
     setNotification({ msg, type });
     setTimeout(() => setNotification(null), 4000);
   };
+
+  const handleCloseModal = useCallback(() => {
+    setSelectedOrder(null);
+    setTimeout(() => {
+      if (orderModalTriggerRef.current) {
+        orderModalTriggerRef.current.focus();
+      }
+    }, 50);
+  }, []);
+
+  // Escape key handler for order modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && selectedOrder) {
+        handleCloseModal();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedOrder, handleCloseModal]);
+
+  // Initial focus in order modal
+  useEffect(() => {
+    if (selectedOrder) {
+      setTimeout(() => {
+        if (closeModalBtnRef.current) {
+          closeModalBtnRef.current.focus();
+        }
+      }, 50);
+    }
+  }, [selectedOrder]);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -65,7 +100,12 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
     }
   }, [initialOrderRef]);
 
-  const openOrderDetails = async (idOrRef) => {
+  const openOrderDetails = async (idOrRef, e = null) => {
+    if (e && e.currentTarget) {
+      orderModalTriggerRef.current = e.currentTarget;
+    } else if (document.activeElement) {
+      orderModalTriggerRef.current = document.activeElement;
+    }
     try {
       setModalLoading(true);
       const data = await fetchAdminOrderById(idOrRef);
@@ -135,8 +175,9 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
           className="admin-btn admin-btn-secondary"
           onClick={loadOrders}
           title="Refresh orders list"
+          aria-label="Refresh orders list"
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="23 4 23 10 17 10"></polyline>
             <polyline points="1 20 1 14 7 14"></polyline>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -148,7 +189,7 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
       {/* Filters */}
       <div className="admin-toolbar-card">
         <div className="admin-search-group">
-          <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
@@ -156,6 +197,7 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
             type="text"
             className="admin-search-input"
             placeholder="Search by customer name, email, phone, or reference..."
+            aria-label="Search orders by customer name, email, phone, or reference"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -255,7 +297,8 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
                       <button
                         type="button"
                         className="admin-btn admin-btn-xs admin-btn-primary"
-                        onClick={() => openOrderDetails(ord.order_reference)}
+                        onClick={(e) => openOrderDetails(ord.order_reference, e)}
+                        aria-label={`View details for order ${ord.order_reference}`}
                       >
                         View Details
                       </button>
@@ -270,19 +313,27 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
 
       {/* Order Details Modal */}
       {selectedOrder && (
-        <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
-          <div className="modal-dialog admin-modal-order" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onClick={handleCloseModal}>
+          <div
+            className="modal-dialog admin-modal-order"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-order-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <div>
-                <h3>Order #{selectedOrder.id} — <span className="order-ref-code">{selectedOrder.order_reference}</span></h3>
+                <h3 id="admin-order-modal-title">Order #{selectedOrder.id} — <span className="order-ref-code">{selectedOrder.order_reference}</span></h3>
                 <span className="subtext">
                   Placed on {new Date(selectedOrder.created_at).toLocaleString()}
                 </span>
               </div>
               <button
+                ref={closeModalBtnRef}
                 type="button"
                 className="modal-close-btn"
-                onClick={() => setSelectedOrder(null)}
+                onClick={handleCloseModal}
+                aria-label="Close order details modal"
               >
                 ✕
               </button>
@@ -337,6 +388,7 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
                     type="button"
                     className="admin-btn admin-btn-sm admin-btn-primary"
                     onClick={handleStatusUpdate}
+                    aria-label="Save updated order status"
                     disabled={
                       updatingStatus ||
                       selectedStatus === selectedOrder.status ||
@@ -403,7 +455,8 @@ export default function AdminOrdersPage({ initialOrderRef = null }) {
               <button
                 type="button"
                 className="admin-btn admin-btn-secondary"
-                onClick={() => setSelectedOrder(null)}
+                onClick={handleCloseModal}
+                aria-label="Close order details"
               >
                 Close
               </button>

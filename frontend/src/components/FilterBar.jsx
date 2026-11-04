@@ -96,9 +96,10 @@ export default function FilterBar({
               className="price-input"
               value={localMin}
               onChange={(e) => setLocalMin(e.target.value)}
+              aria-label="Minimum price in INR"
             />
           </div>
-          <span style={{ color: "var(--gray-400)" }}>–</span>
+          <span className="price-separator">–</span>
           <div className="price-input-wrapper">
             <span className="currency-symbol">₹</span>
             <input
@@ -109,6 +110,7 @@ export default function FilterBar({
               className="price-input"
               value={localMax}
               onChange={(e) => setLocalMax(e.target.value)}
+              aria-label="Maximum price in INR"
             />
           </div>
           <button type="submit" className="price-apply-btn">

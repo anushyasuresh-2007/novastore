@@ -44,10 +44,21 @@ export default function OrderConfirmationPage() {
   return (
     <main className="confirmation-page-container">
       <div className="confirmation-card">
+        {/* Printable Official Invoice Header (Visible only in print) */}
+        <div className="print-receipt-header" aria-hidden="true">
+          <div className="print-header-top">
+            <span className="print-brand-title">NOVASTORE</span>
+            <span className="print-invoice-tag">Customer Invoice Copy</span>
+          </div>
+          <p className="print-subtext">
+            Official Order Receipt • Reference: <strong>{confirmedOrder.order_reference}</strong> • Placed on {formattedDate}
+          </p>
+        </div>
+
         {/* Success Header */}
         <div className="confirmation-header">
-          <div className="confirmation-check-icon">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="confirmation-check-icon no-print">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
               <polyline points="22 4 12 14.01 9 11.01"></polyline>
             </svg>
@@ -67,20 +78,21 @@ export default function OrderConfirmationPage() {
           </div>
           <button
             type="button"
-            className="btn-copy-ref"
+            className="btn-copy-ref no-print"
             onClick={handleCopyReference}
             title="Copy order reference to clipboard"
+            aria-label="Copy order reference to clipboard"
           >
             {copied ? (
               <>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
                 <span>Copied!</span>
               </>
             ) : (
               <>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
@@ -201,13 +213,14 @@ export default function OrderConfirmationPage() {
         </div>
 
         {/* Footer Actions */}
-        <div className="confirmation-footer-actions">
+        <div className="confirmation-footer-actions no-print">
           <button
             type="button"
             className="btn-print-receipt"
             onClick={() => window.print()}
+            aria-label="Print official order receipt"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <polyline points="6 9 6 2 18 2 18 9"></polyline>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
               <rect x="6" y="14" width="12" height="8"></rect>
@@ -219,6 +232,7 @@ export default function OrderConfirmationPage() {
             type="button"
             className="btn-continue-shopping"
             onClick={goToCatalog}
+            aria-label="Continue shopping and return to catalog"
           >
             Continue Shopping →
           </button>

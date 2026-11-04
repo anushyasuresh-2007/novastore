@@ -67,6 +67,7 @@ export default function CartPage() {
             className="btn-clear-cart"
             onClick={clearCart}
             title="Remove all items from cart"
+            aria-label="Clear all items from cart"
           >
             Clear Cart
           </button>
@@ -84,7 +85,6 @@ export default function CartPage() {
 
           <div className="cart-items-list">
             {cartItems.map((item) => {
-              const lineTotal = (item.price * item.quantity).toFixed(2);
               const isAtMaxStock = item.quantity >= item.stock_quantity;
 
               return (
@@ -115,7 +115,7 @@ export default function CartPage() {
                         className="qty-btn"
                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
                         disabled={item.quantity <= 1}
-                        aria-label="Decrease quantity"
+                        aria-label={`Decrease quantity of ${item.name}`}
                       >
                         –
                       </button>
@@ -127,33 +127,34 @@ export default function CartPage() {
                         className="qty-btn"
                         onClick={() => updateQuantity(item.id, item.quantity + 1)}
                         disabled={isAtMaxStock}
-                        aria-label="Increase quantity"
+                        aria-label={`Increase quantity of ${item.name}`}
                         title={isAtMaxStock ? "Maximum available stock reached" : "Increase quantity"}
                       >
                         +
                       </button>
                     </div>
 
-                    {isAtMaxStock && (
-                      <span className="qty-max-badge">Max Stock</span>
-                    )}
+                  {isAtMaxStock && (
+                    <span className="qty-max-badge">Max Stock</span>
+                  )}
 
-                    <button
-                      type="button"
-                      className="cart-item-remove-btn"
-                      onClick={() => removeFromCart(item.id)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-
-                  {/* Line Total */}
-                  <div className="cart-item-total">
-                    <span className="cart-item-line-price">{formatCurrency(item.price * item.quantity, item.currency)}</span>
-                  </div>
+                  <button
+                    type="button"
+                    className="cart-item-remove-btn"
+                    onClick={() => removeFromCart(item.id)}
+                    aria-label={`Remove ${item.name} from cart`}
+                  >
+                    Remove
+                  </button>
                 </div>
-              );
-            })}
+
+                {/* Line Total */}
+                <div className="cart-item-total">
+                  <span className="cart-item-line-price">{formatCurrency(item.price * item.quantity, item.currency)}</span>
+                </div>
+              </div>
+            );
+          })}
           </div>
         </div>
 

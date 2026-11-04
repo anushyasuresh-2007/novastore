@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   fetchAdminProducts,
   createAdminProduct,
@@ -30,7 +30,7 @@ export default function AdminProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // Modal State
+  // Modal State & Focus Refs
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
@@ -40,6 +40,11 @@ export default function AdminProductsPage() {
   // Delete confirmation state
   const [productToDelete, setProductToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  const editModalTriggerRef = useRef(null);
+  const deleteModalTriggerRef = useRef(null);
+  const firstInputRef = useRef(null);
+  const cancelDeleteBtnRef = useRef(null);
 
   const notify = (msg, type = "success") => {
     setNotification({ msg, type });
@@ -80,14 +85,40 @@ export default function AdminProductsPage() {
     loadProducts();
   }, [loadProducts]);
 
-  const handleOpenAddModal = () => {
+  // Escape key support for modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        if (isModalOpen) {
+          setIsModalOpen(false);
+          if (editModalTriggerRef.current && typeof editModalTriggerRef.current.focus === "function") {
+            editModalTriggerRef.current.focus();
+          }
+        } else if (productToDelete) {
+          setProductToDelete(null);
+          if (deleteModalTriggerRef.current && typeof deleteModalTriggerRef.current.focus === "function") {
+            deleteModalTriggerRef.current.focus();
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isModalOpen, productToDelete]);
+
+  const handleOpenAddModal = (e) => {
+    editModalTriggerRef.current = e?.currentTarget || document.activeElement;
     setEditingProduct(null);
     setFormData(EMPTY_FORM);
     setFormErrors({});
     setIsModalOpen(true);
+    setTimeout(() => {
+      firstInputRef.current?.focus();
+    }, 50);
   };
 
-  const handleOpenEditModal = (product) => {
+  const handleOpenEditModal = (product, e) => {
+    editModalTriggerRef.current = e?.currentTarget || document.activeElement;
     setEditingProduct(product);
     setFormData({
       name: product.name,
@@ -100,6 +131,31 @@ export default function AdminProductsPage() {
     });
     setFormErrors({});
     setIsModalOpen(true);
+    setTimeout(() => {
+      firstInputRef.current?.focus();
+    }, 50);
+  };
+
+  const handleCloseEditModal = () => {
+    setIsModalOpen(false);
+    if (editModalTriggerRef.current && typeof editModalTriggerRef.current.focus === "function") {
+      editModalTriggerRef.current.focus();
+    }
+  };
+
+  const handleOpenDeleteModal = (product, e) => {
+    deleteModalTriggerRef.current = e?.currentTarget || document.activeElement;
+    setProductToDelete(product);
+    setTimeout(() => {
+      cancelDeleteBtnRef.current?.focus();
+    }, 50);
+  };
+
+  const handleCloseDeleteModal = () => {
+    setProductToDelete(null);
+    if (deleteModalTriggerRef.current && typeof deleteModalTriggerRef.current.focus === "function") {
+      deleteModalTriggerRef.current.focus();
+    }
   };
 
   const validateForm = () => {
@@ -152,6 +208,9 @@ export default function AdminProductsPage() {
       setIsModalOpen(false);
       loadProducts();
       loadCategories();
+      if (editModalTriggerRef.current && typeof editModalTriggerRef.current.focus === "function") {
+        editModalTriggerRef.current.focus();
+      }
     } catch (err) {
       notify(err.message || "Failed to save product.", "error");
     } finally {
@@ -181,6 +240,9 @@ export default function AdminProductsPage() {
       setProductToDelete(null);
       loadProducts();
       loadCategories();
+      if (deleteModalTriggerRef.current && typeof deleteModalTriggerRef.current.focus === "function") {
+        deleteModalTriggerRef.current.focus();
+      }
     } catch (err) {
       notify(err.message || "Failed to delete product.", "error");
     } finally {
@@ -207,8 +269,9 @@ export default function AdminProductsPage() {
           type="button"
           className="admin-btn admin-btn-primary"
           onClick={handleOpenAddModal}
+          aria-label="Add new product to catalogue"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
@@ -219,7 +282,7 @@ export default function AdminProductsPage() {
       {/* Filter and Search Bar */}
       <div className="admin-toolbar-card">
         <div className="admin-search-group">
-          <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
@@ -229,6 +292,7 @@ export default function AdminProductsPage() {
             placeholder="Search by title or SKU..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search products"
           />
         </div>
 
@@ -331,6 +395,7 @@ export default function AdminProductsPage() {
                           className="stock-btn"
                           onClick={() => handleQuickStock(p, -1)}
                           disabled={p.stock_quantity <= 0}
+                          aria-label={`Decrease stock for ${p.name}`}
                           title="Decrease stock by 1"
                         >
                           –
@@ -342,6 +407,7 @@ export default function AdminProductsPage() {
                           type="button"
                           className="stock-btn"
                           onClick={() => handleQuickStock(p, 1)}
+                          aria-label={`Increase stock for ${p.name}`}
                           title="Increase stock by 1"
                         >
                           +
@@ -360,14 +426,16 @@ export default function AdminProductsPage() {
                         <button
                           type="button"
                           className="admin-btn admin-btn-xs admin-btn-secondary"
-                          onClick={() => handleOpenEditModal(p)}
+                          onClick={(e) => handleOpenEditModal(p, e)}
+                          aria-label={`Edit ${p.name}`}
                         >
                           Edit
                         </button>
                         <button
                           type="button"
                           className="admin-btn admin-btn-xs admin-btn-danger"
-                          onClick={() => setProductToDelete(p)}
+                          onClick={(e) => handleOpenDeleteModal(p, e)}
+                          aria-label={`Delete ${p.name}`}
                         >
                           Delete
                         </button>
@@ -383,14 +451,15 @@ export default function AdminProductsPage() {
 
       {/* Add / Edit Product Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-backdrop" onClick={handleCloseEditModal} role="dialog" aria-modal="true" aria-labelledby="admin-product-modal-title">
           <div className="modal-dialog admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{editingProduct ? `Edit Product #${editingProduct.id}` : "Add New Catalogue Product"}</h3>
+              <h3 id="admin-product-modal-title">{editingProduct ? `Edit Product #${editingProduct.id}` : "Add New Catalogue Product"}</h3>
               <button
                 type="button"
                 className="modal-close-btn"
-                onClick={() => setIsModalOpen(false)}
+                onClick={handleCloseEditModal}
+                aria-label="Close modal"
               >
                 ✕
               </button>
@@ -401,6 +470,7 @@ export default function AdminProductsPage() {
                 <div className="form-group full-width">
                   <label htmlFor="prod-name">Product Name *</label>
                   <input
+                    ref={firstInputRef}
                     id="prod-name"
                     type="text"
                     className="admin-input"
@@ -513,7 +583,7 @@ export default function AdminProductsPage() {
                 <button
                   type="button"
                   className="admin-btn admin-btn-secondary"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={handleCloseEditModal}
                   disabled={submitting}
                 >
                   Cancel
@@ -533,14 +603,21 @@ export default function AdminProductsPage() {
 
       {/* Delete Confirmation Modal */}
       {productToDelete && (
-        <div className="modal-backdrop" onClick={() => setProductToDelete(null)}>
-          <div className="modal-dialog admin-modal-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onClick={handleCloseDeleteModal}>
+          <div
+            className="modal-dialog admin-modal-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-delete-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
-              <h3>Delete Product Confirmation</h3>
+              <h3 id="admin-delete-modal-title">Delete Product Confirmation</h3>
               <button
                 type="button"
                 className="modal-close-btn"
-                onClick={() => setProductToDelete(null)}
+                onClick={handleCloseDeleteModal}
+                aria-label="Close delete confirmation modal"
               >
                 ✕
               </button>
@@ -550,7 +627,7 @@ export default function AdminProductsPage() {
                 Are you sure you want to remove <strong>"{productToDelete.name}"</strong> (ID #{productToDelete.id})?
               </p>
               <div className="admin-delete-notice">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <circle cx="12" cy="12" r="10"></circle>
                   <line x1="12" y1="8" x2="12" y2="12"></line>
                   <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -562,9 +639,10 @@ export default function AdminProductsPage() {
             </div>
             <div className="modal-footer">
               <button
+                ref={cancelDeleteBtnRef}
                 type="button"
                 className="admin-btn admin-btn-secondary"
-                onClick={() => setProductToDelete(null)}
+                onClick={handleCloseDeleteModal}
                 disabled={deleting}
               >
                 Cancel

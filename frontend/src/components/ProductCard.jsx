@@ -34,10 +34,11 @@ export default function ProductCard({ product, onViewDetails }) {
 
   return (
     <article className="product-card" id={`product-${product.id}`}>
-      <div
-        className="product-image-container"
+      <button
+        type="button"
+        className="product-image-container product-image-btn"
         onClick={() => onViewDetails(product)}
-        title={`View details for ${product.name}`}
+        aria-label={`View details for ${product.name}`}
       >
         <img
           src={imageError || !product.image_path ? fallbackImage : product.image_path}
@@ -47,15 +48,17 @@ export default function ProductCard({ product, onViewDetails }) {
           onError={() => setImageError(true)}
         />
         <span className="category-tag">{product.category}</span>
-      </div>
+      </button>
 
       <div className="product-body">
-        <h3
-          className="product-title"
-          onClick={() => onViewDetails(product)}
-          title={product.name}
-        >
-          {product.name}
+        <h3 className="product-title">
+          <button
+            type="button"
+            className="product-title-btn"
+            onClick={() => onViewDetails(product)}
+          >
+            {product.name}
+          </button>
         </h3>
 
         <p className="product-description">
@@ -72,6 +75,7 @@ export default function ProductCard({ product, onViewDetails }) {
             type="button"
             className="btn-view-details"
             onClick={() => onViewDetails(product)}
+            aria-label={`View details for ${product.name}`}
           >
             Details
           </button>
@@ -80,6 +84,7 @@ export default function ProductCard({ product, onViewDetails }) {
             className={`btn-add-cart ${justAdded ? "btn-added" : ""}`}
             onClick={handleAddToCart}
             disabled={isOutOfStock}
+            aria-label={isOutOfStock ? `${product.name} is out of stock` : `Add ${product.name} to cart`}
             title={isOutOfStock ? "Out of Stock" : "Add 1 unit to cart"}
           >
             {justAdded ? (

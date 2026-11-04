@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { fetchProductById } from "../services/api";
 import { useCart } from "../context/CartContext";
 import { formatCurrency } from "../utils/currency";
@@ -10,6 +10,19 @@ export default function ProductDetailsModal({ productId, onClose }) {
   const [error, setError] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [justAdded, setJustAdded] = useState(false);
+
+  const closeBtnRef = useRef(null);
+  const previouslyFocusedElement = useRef(null);
+
+  // Preserve previously active element and restore on unmount
+  useEffect(() => {
+    previouslyFocusedElement.current = document.activeElement;
+    return () => {
+      if (previouslyFocusedElement.current && typeof previouslyFocusedElement.current.focus === "function") {
+        previouslyFocusedElement.current.focus();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -25,7 +38,13 @@ export default function ProductDetailsModal({ productId, onClose }) {
       } catch (err) {
         if (isMounted) setError(err.message);
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          // Set focus inside modal after content renders
+          setTimeout(() => {
+            closeBtnRef.current?.focus();
+          }, 50);
+        }
       }
     }
 
@@ -56,9 +75,15 @@ export default function ProductDetailsModal({ productId, onClose }) {
   const fallbackImage = "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80";
 
   return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-product-title">
       <div className="modal-container" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close-btn" onClick={onClose} aria-label="Close modal">
+        <button
+          ref={closeBtnRef}
+          type="button"
+          className="modal-close-btn"
+          onClick={onClose}
+          aria-label="Close modal"
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -87,7 +112,7 @@ export default function ProductDetailsModal({ productId, onClose }) {
             </div>
             <div className="modal-info-pane">
               <span className="modal-category">{product.category}</span>
-              <h2 className="modal-title">{product.name}</h2>
+              <h2 id="modal-product-title" className="modal-title">{product.name}</h2>
 
               <div className="modal-price-row">
                 <span className="modal-price">{formatCurrency(product.price, product.currency)}</span>
@@ -124,15 +149,17 @@ export default function ProductDetailsModal({ productId, onClose }) {
                         className="qty-btn"
                         onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                         disabled={quantity <= 1}
+                        aria-label="Decrease quantity"
                       >
                         –
                       </button>
-                      <span className="qty-display">{quantity}</span>
+                      <span className="qty-display" aria-live="polite">{quantity}</span>
                       <button
                         type="button"
                         className="qty-btn"
                         onClick={() => setQuantity((q) => Math.min(product.stock_quantity, q + 1))}
                         disabled={quantity >= product.stock_quantity}
+                        aria-label="Increase quantity"
                       >
                         +
                       </button>

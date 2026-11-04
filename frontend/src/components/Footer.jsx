@@ -12,6 +12,7 @@ export default function Footer() {
           type="button"
           className="footer-admin-link"
           onClick={() => setCurrentView("admin")}
+          aria-label="Go to Administrator Portal"
         >
           🔒 Admin Portal
         </button>
