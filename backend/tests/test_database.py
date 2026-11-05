@@ -1,6 +1,9 @@
+import sqlite3
+from unittest.mock import MagicMock
 import pytest
 from sqlalchemy.exc import IntegrityError
 from app.database import seed_db
+from app.models.db import set_sqlite_pragma
 from app.models.product import Product
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -86,3 +89,33 @@ def test_sqlite_foreign_key_enforcement(app, db_session):
         with pytest.raises(IntegrityError):
             db_session.commit()
         db_session.rollback()
+
+
+def test_sqlite_pragma_listener_executes_on_sqlite_connection():
+    """Verify set_sqlite_pragma executes PRAGMA foreign_keys=ON on SQLite connections."""
+    conn = sqlite3.connect(":memory:")
+    try:
+        set_sqlite_pragma(conn, None)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys;")
+        val = cursor.fetchone()[0]
+        cursor.close()
+        assert val == 1, f"Expected PRAGMA foreign_keys=1, got {val}"
+    finally:
+        conn.close()
+
+
+def test_sqlite_pragma_listener_skips_postgresql_connection():
+    """Verify set_sqlite_pragma strictly ignores PostgreSQL/psycopg2 connections without executing PRAGMA."""
+    # Simulate a psycopg2 connection object whose class module is psycopg2.extensions
+    class MockPsycopg2Connection:
+        __module__ = "psycopg2.extensions"
+
+        def __init__(self):
+            self.cursor = MagicMock()
+
+    mock_pg_conn = MockPsycopg2Connection()
+    set_sqlite_pragma(mock_pg_conn, None)
+
+    # Ensure cursor() was never called and no PRAGMA command was dispatched
+    mock_pg_conn.cursor.assert_not_called()
