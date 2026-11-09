@@ -73,8 +73,21 @@ def rate_limit(key_prefix: str, default_limit: int = 10, default_period: int = 6
             config_limit_key = f"RATELIMIT_{key_prefix.upper()}_LIMIT"
             config_period_key = f"RATELIMIT_{key_prefix.upper()}_PERIOD"
 
-            limit = current_app.config.get(config_limit_key, default_limit)
-            period = current_app.config.get(config_period_key, default_period)
+            limit = current_app.config.get(config_limit_key)
+            if limit is None and key_prefix == "admin_login":
+                limit = current_app.config.get("RATELIMIT_LOGIN_LIMIT")
+            elif limit is None and key_prefix == "order_create":
+                limit = current_app.config.get("RATELIMIT_ORDER_LIMIT")
+            if limit is None:
+                limit = default_limit
+
+            period = current_app.config.get(config_period_key)
+            if period is None and key_prefix == "admin_login":
+                period = current_app.config.get("RATELIMIT_LOGIN_PERIOD")
+            elif period is None and key_prefix == "order_create":
+                period = current_app.config.get("RATELIMIT_ORDER_PERIOD")
+            if period is None:
+                period = default_period
 
             client_ip = limiter.get_client_ip()
             key = f"{key_prefix}:{client_ip}"

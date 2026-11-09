@@ -85,10 +85,27 @@ class Config:
     CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*")
     JSON_SORT_KEYS = False
     RATELIMIT_ENABLED = True
-    RATELIMIT_LOGIN_LIMIT = int(os.environ.get("RATELIMIT_LOGIN_LIMIT", 5))
-    RATELIMIT_LOGIN_PERIOD = int(os.environ.get("RATELIMIT_LOGIN_PERIOD", 60))
-    RATELIMIT_ORDER_LIMIT = int(os.environ.get("RATELIMIT_ORDER_LIMIT", 10))
-    RATELIMIT_ORDER_PERIOD = int(os.environ.get("RATELIMIT_ORDER_PERIOD", 60))
+    RATELIMIT_ADMIN_LOGIN_LIMIT = int(
+        os.environ.get("RATELIMIT_ADMIN_LOGIN_LIMIT")
+        or os.environ.get("RATELIMIT_LOGIN_LIMIT", 5)
+    )
+    RATELIMIT_ADMIN_LOGIN_PERIOD = int(
+        os.environ.get("RATELIMIT_ADMIN_LOGIN_PERIOD")
+        or os.environ.get("RATELIMIT_LOGIN_PERIOD", 60)
+    )
+    RATELIMIT_ORDER_CREATE_LIMIT = int(
+        os.environ.get("RATELIMIT_ORDER_CREATE_LIMIT")
+        or os.environ.get("RATELIMIT_ORDER_LIMIT", 10)
+    )
+    RATELIMIT_ORDER_CREATE_PERIOD = int(
+        os.environ.get("RATELIMIT_ORDER_CREATE_PERIOD")
+        or os.environ.get("RATELIMIT_ORDER_PERIOD", 60)
+    )
+    # Maintain legacy aliases for backwards compatibility
+    RATELIMIT_LOGIN_LIMIT = RATELIMIT_ADMIN_LOGIN_LIMIT
+    RATELIMIT_LOGIN_PERIOD = RATELIMIT_ADMIN_LOGIN_PERIOD
+    RATELIMIT_ORDER_LIMIT = RATELIMIT_ORDER_CREATE_LIMIT
+    RATELIMIT_ORDER_PERIOD = RATELIMIT_ORDER_CREATE_PERIOD
     # Number of trusted upstream reverse proxies (e.g., 0 for direct connection or unknown upstream).
     # NOTE: Hosting provider proxy chains (e.g., Render, Cloudflare, AWS ALB) must be verified
     # against official provider documentation before configuring in production.

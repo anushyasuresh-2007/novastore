@@ -1,5 +1,7 @@
 import os
+import importlib
 import pytest
+import app.config
 from app import create_app
 from app.models.db import db
 from app.models.admin import Admin
@@ -476,6 +478,241 @@ def test_trusted_proxy_resolves_client_ip():
     )
     assert res.status_code == 200
     assert captured_ips[-1] == "203.0.113.195"
+
+
+def test_canonical_ratelimit_env_vars_loading(monkeypatch):
+    """Verify that all four canonical environment variables are correctly loaded into Config."""
+    monkeypatch.setenv("RATELIMIT_ADMIN_LOGIN_LIMIT", "7")
+    monkeypatch.setenv("RATELIMIT_ADMIN_LOGIN_PERIOD", "120")
+    monkeypatch.setenv("RATELIMIT_ORDER_CREATE_LIMIT", "15")
+    monkeypatch.setenv("RATELIMIT_ORDER_CREATE_PERIOD", "90")
+    monkeypatch.delenv("RATELIMIT_LOGIN_LIMIT", raising=False)
+    monkeypatch.delenv("RATELIMIT_LOGIN_PERIOD", raising=False)
+    monkeypatch.delenv("RATELIMIT_ORDER_LIMIT", raising=False)
+    monkeypatch.delenv("RATELIMIT_ORDER_PERIOD", raising=False)
+
+    importlib.reload(app.config)
+    try:
+        cfg = app.config.Config
+        assert cfg.RATELIMIT_ADMIN_LOGIN_LIMIT == 7
+        assert cfg.RATELIMIT_ADMIN_LOGIN_PERIOD == 120
+        assert cfg.RATELIMIT_ORDER_CREATE_LIMIT == 15
+        assert cfg.RATELIMIT_ORDER_CREATE_PERIOD == 90
+        # Legacy aliases also match canonical values
+        assert cfg.RATELIMIT_LOGIN_LIMIT == 7
+        assert cfg.RATELIMIT_LOGIN_PERIOD == 120
+        assert cfg.RATELIMIT_ORDER_LIMIT == 15
+        assert cfg.RATELIMIT_ORDER_PERIOD == 90
+        # Inherited by environment configurations
+        assert app.config.DevelopmentConfig.RATELIMIT_ADMIN_LOGIN_LIMIT == 7
+        assert app.config.ProductionConfig.RATELIMIT_ORDER_CREATE_LIMIT == 15
+    finally:
+        monkeypatch.undo()
+        importlib.reload(app.config)
+
+
+def test_legacy_ratelimit_env_vars_fallback(monkeypatch):
+    """Verify that legacy environment variables are loaded when canonical ones are omitted."""
+    monkeypatch.delenv("RATELIMIT_ADMIN_LOGIN_LIMIT", raising=False)
+    monkeypatch.delenv("RATELIMIT_ADMIN_LOGIN_PERIOD", raising=False)
+    monkeypatch.delenv("RATELIMIT_ORDER_CREATE_LIMIT", raising=False)
+    monkeypatch.delenv("RATELIMIT_ORDER_CREATE_PERIOD", raising=False)
+    monkeypatch.setenv("RATELIMIT_LOGIN_LIMIT", "8")
+    monkeypatch.setenv("RATELIMIT_LOGIN_PERIOD", "45")
+    monkeypatch.setenv("RATELIMIT_ORDER_LIMIT", "12")
+    monkeypatch.setenv("RATELIMIT_ORDER_PERIOD", "75")
+
+    importlib.reload(app.config)
+    try:
+        cfg = app.config.Config
+        assert cfg.RATELIMIT_ADMIN_LOGIN_LIMIT == 8
+        assert cfg.RATELIMIT_ADMIN_LOGIN_PERIOD == 45
+        assert cfg.RATELIMIT_ORDER_CREATE_LIMIT == 12
+        assert cfg.RATELIMIT_ORDER_CREATE_PERIOD == 75
+        assert cfg.RATELIMIT_LOGIN_LIMIT == 8
+        assert cfg.RATELIMIT_LOGIN_PERIOD == 45
+        assert cfg.RATELIMIT_ORDER_LIMIT == 12
+        assert cfg.RATELIMIT_ORDER_PERIOD == 75
+    finally:
+        monkeypatch.undo()
+        importlib.reload(app.config)
+
+
+def test_canonical_ratelimit_env_vars_precedence_over_legacy(monkeypatch):
+    """Verify that canonical environment variables take strict precedence when both exist."""
+    monkeypatch.setenv("RATELIMIT_ADMIN_LOGIN_LIMIT", "14")
+    monkeypatch.setenv("RATELIMIT_ADMIN_LOGIN_PERIOD", "100")
+    monkeypatch.setenv("RATELIMIT_ORDER_CREATE_LIMIT", "25")
+    monkeypatch.setenv("RATELIMIT_ORDER_CREATE_PERIOD", "80")
+    monkeypatch.setenv("RATELIMIT_LOGIN_LIMIT", "3")
+    monkeypatch.setenv("RATELIMIT_LOGIN_PERIOD", "30")
+    monkeypatch.setenv("RATELIMIT_ORDER_LIMIT", "4")
+    monkeypatch.setenv("RATELIMIT_ORDER_PERIOD", "40")
+
+    importlib.reload(app.config)
+    try:
+        cfg = app.config.Config
+        assert cfg.RATELIMIT_ADMIN_LOGIN_LIMIT == 14
+        assert cfg.RATELIMIT_ADMIN_LOGIN_PERIOD == 100
+        assert cfg.RATELIMIT_ORDER_CREATE_LIMIT == 25
+        assert cfg.RATELIMIT_ORDER_CREATE_PERIOD == 80
+        assert cfg.RATELIMIT_LOGIN_LIMIT == 14
+        assert cfg.RATELIMIT_LOGIN_PERIOD == 100
+        assert cfg.RATELIMIT_ORDER_LIMIT == 25
+        assert cfg.RATELIMIT_ORDER_PERIOD == 80
+    finally:
+        monkeypatch.undo()
+        importlib.reload(app.config)
+
+
+def test_runtime_legacy_flask_config_fallback(app, client):
+    """Verify runtime rate limiter honors legacy Flask config keys when canonical keys are absent."""
+    limiter.reset()
+    app.config["RATELIMIT_ENABLED"] = True
+
+    # Strip canonical keys to test fallback
+    app.config.pop("RATELIMIT_ADMIN_LOGIN_LIMIT", None)
+    app.config.pop("RATELIMIT_ADMIN_LOGIN_PERIOD", None)
+    app.config.pop("RATELIMIT_ORDER_CREATE_LIMIT", None)
+    app.config.pop("RATELIMIT_ORDER_CREATE_PERIOD", None)
+
+    # Set legacy config keys
+    app.config["RATELIMIT_LOGIN_LIMIT"] = 2
+    app.config["RATELIMIT_LOGIN_PERIOD"] = 60
+    app.config["RATELIMIT_ORDER_LIMIT"] = 2
+    app.config["RATELIMIT_ORDER_PERIOD"] = 60
+
+    try:
+        # Admin login fallback: 2 attempts succeed (401), 3rd is throttled (429)
+        for _ in range(2):
+            res = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+            assert res.status_code == 401
+        res3 = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res3.status_code == 429
+        assert "Limit of 2 requests per 60s exceeded" in res3.get_json()["error"]
+
+        limiter.reset()
+
+        # Order creation fallback: 2 requests reach endpoint (400), 3rd is throttled (429)
+        for _ in range(2):
+            res = client.post("/api/orders", json={})
+            assert res.status_code == 400
+        res_order = client.post("/api/orders", json={})
+        assert res_order.status_code == 429
+        assert "Limit of 2 requests per 60s exceeded" in res_order.get_json()["error"]
+    finally:
+        limiter.reset()
+        app.config["RATELIMIT_ENABLED"] = False
+        app.config.pop("RATELIMIT_LOGIN_LIMIT", None)
+        app.config.pop("RATELIMIT_LOGIN_PERIOD", None)
+        app.config.pop("RATELIMIT_ORDER_LIMIT", None)
+        app.config.pop("RATELIMIT_ORDER_PERIOD", None)
+
+
+def test_rate_limiting_default_limits_enforced_when_overrides_absent(app, client):
+    """Verify default limits of 5 (admin login) and 10 (order create) per 60s when config overrides are absent."""
+    limiter.reset()
+    app.config["RATELIMIT_ENABLED"] = True
+
+    for key in (
+        "RATELIMIT_ADMIN_LOGIN_LIMIT",
+        "RATELIMIT_ADMIN_LOGIN_PERIOD",
+        "RATELIMIT_LOGIN_LIMIT",
+        "RATELIMIT_LOGIN_PERIOD",
+        "RATELIMIT_ORDER_CREATE_LIMIT",
+        "RATELIMIT_ORDER_CREATE_PERIOD",
+        "RATELIMIT_ORDER_LIMIT",
+        "RATELIMIT_ORDER_PERIOD",
+    ):
+        app.config.pop(key, None)
+
+    try:
+        # Admin login: 5 allowed, 6th triggers 429
+        for _ in range(5):
+            res = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+            assert res.status_code == 401
+        res6 = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res6.status_code == 429
+        assert "Limit of 5 requests per 60s exceeded" in res6.get_json()["error"]
+        assert int(res6.headers["Retry-After"]) > 0
+
+        limiter.reset()
+
+        # Order creation: 10 allowed, 11th triggers 429
+        for _ in range(10):
+            res = client.post("/api/orders", json={})
+            assert res.status_code == 400
+        res11 = client.post("/api/orders", json={})
+        assert res11.status_code == 429
+        assert "Limit of 10 requests per 60s exceeded" in res11.get_json()["error"]
+        assert int(res11.headers["Retry-After"]) > 0
+    finally:
+        limiter.reset()
+        app.config["RATELIMIT_ENABLED"] = False
+
+
+def test_rate_limiting_sliding_window_expiry_with_time_mock(app, client, monkeypatch):
+    """Verify requests are permitted again after sliding window period expires using mocked monotonic time."""
+    limiter.reset()
+    app.config["RATELIMIT_ENABLED"] = True
+    app.config["RATELIMIT_ADMIN_LOGIN_LIMIT"] = 2
+    app.config["RATELIMIT_ADMIN_LOGIN_PERIOD"] = 60
+
+    current_simulated_time = 1000.0
+
+    monkeypatch.setattr("app.services.rate_limiter.time.monotonic", lambda: current_simulated_time)
+
+    try:
+        # Requests 1 and 2 at t=1000.0: allowed
+        res1 = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res1.status_code == 401
+        res2 = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res2.status_code == 401
+
+        # Request 3 at t=1000.0: throttled (429)
+        res3 = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res3.status_code == 429
+        assert int(res3.headers["Retry-After"]) == 61
+
+        # Advance by 30s (t=1030.0, still within 60s window): still throttled
+        current_simulated_time = 1030.0
+        res4 = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res4.status_code == 429
+
+        # Advance past 60s window (t=1061.0): t=1000.0 timestamps have expired
+        current_simulated_time = 1061.0
+        res5 = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res5.status_code == 401
+    finally:
+        limiter.reset()
+        app.config["RATELIMIT_ENABLED"] = False
+
+
+def test_explicit_limiter_reset_restores_allowance_after_throttling(app, client):
+    """Verify that calling limiter.reset() immediately restores request allowance after throttling."""
+    limiter.reset()
+    app.config["RATELIMIT_ENABLED"] = True
+    app.config["RATELIMIT_ADMIN_LOGIN_LIMIT"] = 2
+    app.config["RATELIMIT_ADMIN_LOGIN_PERIOD"] = 60
+
+    try:
+        # Exhaust limit
+        client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        client.post("/api/admin/login", json={"username": "u", "password": "p"})
+
+        # Confirm throttled
+        res_throttled = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res_throttled.status_code == 429
+
+        # Explicitly reset limiter
+        limiter.reset()
+
+        # Immediate next request should succeed and reach endpoint
+        res_unblocked = client.post("/api/admin/login", json={"username": "u", "password": "p"})
+        assert res_unblocked.status_code == 401
+    finally:
+        limiter.reset()
+        app.config["RATELIMIT_ENABLED"] = False
 
 
 # ============================================================================
