@@ -273,36 +273,57 @@ class AdminService:
         return query.order_by(Order.created_at.desc()).all()
 
     @classmethod
-    def get_order(cls, id_or_ref: str | int) -> Optional[Order]:
-        """Fetch order details by numeric primary key ID or UUID order reference."""
+    def get_order(cls, id_or_ref: str | int, for_update: bool = False) -> Optional[Order]:
+        """Fetch order details by numeric primary key ID or UUID order reference, with optional SELECT FOR UPDATE row locking."""
         if isinstance(id_or_ref, int) or (isinstance(id_or_ref, str) and id_or_ref.isdigit()):
-            return db.session.get(Order, int(id_or_ref))
+            query = Order.query.filter_by(id=int(id_or_ref))
         else:
             clean_ref = str(id_or_ref).strip().upper()
-            return Order.query.filter_by(order_reference=clean_ref).first()
+            query = Order.query.filter_by(order_reference=clean_ref)
+
+        if for_update:
+            query = query.with_for_update()
+
+        return query.first()
 
     @classmethod
     def update_order_status(cls, id_or_ref: str | int, new_status: str) -> Order:
-        """Update an order's fulfillment status with controlled status transition validation."""
-        order = cls.get_order(id_or_ref)
-        if not order:
-            raise LookupError(f"Order '{id_or_ref}' not found.")
-
+        """Update an order's fulfillment status with controlled status transition validation and concurrency row locking."""
         clean_status = str(new_status).strip().upper()
         if clean_status not in VALID_ORDER_STATUSES:
             raise ValueError(
                 f"Invalid order status '{new_status}'. Allowed values: {', '.join(VALID_ORDER_STATUSES)}"
             )
 
-        current_status = order.status.upper() if order.status else "PENDING"
-        allowed_transitions = ALLOWED_ORDER_STATUS_TRANSITIONS.get(current_status, {current_status})
-        if clean_status not in allowed_transitions:
-            raise ValueError(
-                f"Cannot transition order from '{current_status}' to '{clean_status}'. "
-                f"Allowed transitions from '{current_status}': {', '.join(sorted(allowed_transitions))}"
-            )
+        try:
+            # 1. Acquire exclusive row lock on the Order record first
+            order = cls.get_order(id_or_ref, for_update=True)
+            if not order:
+                raise LookupError(f"Order '{id_or_ref}' not found.")
 
-        order.status = clean_status
-        order.updated_at = datetime.now(timezone.utc)
-        db.session.commit()
-        return order
+            # 2. Read the order's current status only after acquiring the row lock
+            current_status = order.status.upper() if order.status else "PENDING"
+            allowed_transitions = ALLOWED_ORDER_STATUS_TRANSITIONS.get(current_status, {current_status})
+            if clean_status not in allowed_transitions:
+                raise ValueError(
+                    f"Cannot transition order from '{current_status}' to '{clean_status}'. "
+                    f"Allowed transitions from '{current_status}': {', '.join(sorted(allowed_transitions))}"
+                )
+
+            # 3. Restore product stock only when genuinely transitioning from PENDING or CONFIRMED to CANCELLED.
+            # SHIPPED or DELIVERED orders do not restore stock, and repeated cancellations are idempotent.
+            if clean_status == "CANCELLED" and current_status in ("PENDING", "CONFIRMED"):
+                for item in order.items:
+                    # Also lock the product row during stock adjustment
+                    product = db.session.get(Product, item.product_id, with_for_update=True)
+                    if product:
+                        product.stock_quantity += item.quantity
+
+            # 4. Update status and timestamp atomically within the transaction
+            order.status = clean_status
+            order.updated_at = datetime.now(timezone.utc)
+            db.session.commit()
+            return order
+        except Exception:
+            db.session.rollback()
+            raise

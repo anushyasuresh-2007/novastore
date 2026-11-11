@@ -572,6 +572,353 @@ def test_order_status_state_machine_transitions(client, admin_headers, app):
     assert r5.status_code == 200
 
 
+def test_cancellation_restores_stock_pending(client, admin_headers, app):
+    """Test 1: PENDING cancellation restores stock."""
+    with app.app_context():
+        product = Product(
+            name="Pending Test Item",
+            description="Testing inventory restoration from PENDING",
+            category="Electronics",
+            price=999.0,
+            stock_quantity=10,
+            image_path="https://example.com/item.jpg",
+            is_active=True,
+        )
+        db.session.add(product)
+        db.session.flush()
+
+        order = Order(
+            order_reference="ORD-CANCEL-PENDING",
+            customer_name="Aarav",
+            customer_email="aarav@example.com",
+            customer_phone="9876543210",
+            delivery_address="12 MG Road",
+            city="Bengaluru",
+            postal_code="560001",
+            subtotal=2997.0,
+            delivery_fee=0.0,
+            total_amount=2997.0,
+            status="PENDING",
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = OrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            product_name=product.name,
+            unit_price=product.price,
+            quantity=3,
+            line_total=2997.0,
+        )
+        db.session.add(item)
+        db.session.commit()
+        pid = product.id
+
+    res = client.patch(
+        "/api/admin/orders/ORD-CANCEL-PENDING/status",
+        headers=admin_headers,
+        json={"status": "CANCELLED"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["order"]["status"] == "CANCELLED"
+
+    with app.app_context():
+        p = db.session.get(Product, pid)
+        assert p.stock_quantity == 13  # 10 + 3 restored
+
+
+def test_cancellation_restores_stock_confirmed(client, admin_headers, app):
+    """Test 2: CONFIRMED cancellation restores stock."""
+    with app.app_context():
+        product = Product(
+            name="Confirmed Test Item",
+            description="Testing inventory restoration from CONFIRMED",
+            category="Audio",
+            price=1500.0,
+            stock_quantity=20,
+            image_path="https://example.com/audio.jpg",
+            is_active=True,
+        )
+        db.session.add(product)
+        db.session.flush()
+
+        order = Order(
+            order_reference="ORD-CANCEL-CONFIRMED",
+            customer_name="Diya",
+            customer_email="diya@example.com",
+            customer_phone="9876543210",
+            delivery_address="45 Park Street",
+            city="Kolkata",
+            postal_code="700016",
+            subtotal=7500.0,
+            delivery_fee=0.0,
+            total_amount=7500.0,
+            status="CONFIRMED",
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = OrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            product_name=product.name,
+            unit_price=product.price,
+            quantity=5,
+            line_total=7500.0,
+        )
+        db.session.add(item)
+        db.session.commit()
+        pid = product.id
+
+    res = client.patch(
+        "/api/admin/orders/ORD-CANCEL-CONFIRMED/status",
+        headers=admin_headers,
+        json={"status": "CANCELLED"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["order"]["status"] == "CANCELLED"
+
+    with app.app_context():
+        p = db.session.get(Product, pid)
+        assert p.stock_quantity == 25  # 20 + 5 restored
+
+
+def test_repeated_cancellation_does_not_restore_stock_twice(client, admin_headers, app):
+    """Test 3: Repeated cancellation is idempotent and does not restore stock twice."""
+    with app.app_context():
+        product = Product(
+            name="Idempotent Test Item",
+            description="Testing idempotency on repeat cancellation",
+            category="Wearables",
+            price=2000.0,
+            stock_quantity=15,
+            image_path="https://example.com/watch.jpg",
+            is_active=True,
+        )
+        db.session.add(product)
+        db.session.flush()
+
+        order = Order(
+            order_reference="ORD-CANCEL-REPEAT",
+            customer_name="Vikram",
+            customer_email="vikram@example.com",
+            customer_phone="9876543210",
+            delivery_address="88 Beach Road",
+            city="Chennai",
+            postal_code="600001",
+            subtotal=4000.0,
+            delivery_fee=0.0,
+            total_amount=4000.0,
+            status="CONFIRMED",
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = OrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            product_name=product.name,
+            unit_price=product.price,
+            quantity=2,
+            line_total=4000.0,
+        )
+        db.session.add(item)
+        db.session.commit()
+        pid = product.id
+
+    # First cancellation: 15 + 2 = 17
+    res1 = client.patch(
+        "/api/admin/orders/ORD-CANCEL-REPEAT/status",
+        headers=admin_headers,
+        json={"status": "CANCELLED"},
+    )
+    assert res1.status_code == 200
+    with app.app_context():
+        assert db.session.get(Product, pid).stock_quantity == 17
+
+    # Second cancellation: idempotent call, must remain 17 (NOT 19)
+    res2 = client.patch(
+        "/api/admin/orders/ORD-CANCEL-REPEAT/status",
+        headers=admin_headers,
+        json={"status": "CANCELLED"},
+    )
+    assert res2.status_code == 200
+    with app.app_context():
+        assert db.session.get(Product, pid).stock_quantity == 17
+
+    # Third cancellation: idempotent call, must remain 17
+    res3 = client.patch(
+        "/api/admin/orders/ORD-CANCEL-REPEAT/status",
+        headers=admin_headers,
+        json={"status": "CANCELLED"},
+    )
+    assert res3.status_code == 200
+    with app.app_context():
+        assert db.session.get(Product, pid).stock_quantity == 17
+
+
+def test_shipped_cancellation_does_not_automatically_restore_stock(client, admin_headers, app):
+    """Test 4: SHIPPED cancellation does not automatically restore stock."""
+    with app.app_context():
+        product = Product(
+            name="Shipped Test Item",
+            description="Testing SHIPPED cancellation does not restore warehouse stock",
+            category="Home & Office",
+            price=800.0,
+            stock_quantity=30,
+            image_path="https://example.com/lamp.jpg",
+            is_active=True,
+        )
+        db.session.add(product)
+        db.session.flush()
+
+        order = Order(
+            order_reference="ORD-CANCEL-SHIPPED",
+            customer_name="Ananya",
+            customer_email="ananya@example.com",
+            customer_phone="9876543210",
+            delivery_address="102 Lake View",
+            city="Hyderabad",
+            postal_code="500001",
+            subtotal=3200.0,
+            delivery_fee=0.0,
+            total_amount=3200.0,
+            status="SHIPPED",
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = OrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            product_name=product.name,
+            unit_price=product.price,
+            quantity=4,
+            line_total=3200.0,
+        )
+        db.session.add(item)
+        db.session.commit()
+        pid = product.id
+
+    res = client.patch(
+        "/api/admin/orders/ORD-CANCEL-SHIPPED/status",
+        headers=admin_headers,
+        json={"status": "CANCELLED"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["order"]["status"] == "CANCELLED"
+
+    with app.app_context():
+        p = db.session.get(Product, pid)
+        # Stock must remain unchanged at 30 (not 34) because goods were already in transit
+        assert p.stock_quantity == 30
+
+
+def test_delivered_cancellation_remains_rejected(client, admin_headers, app):
+    """Test 5: DELIVERED cancellation remains rejected by transition rules."""
+    with app.app_context():
+        order = Order(
+            order_reference="ORD-CANCEL-DELIVERED",
+            customer_name="Karan",
+            customer_email="karan@example.com",
+            customer_phone="9876543210",
+            delivery_address="5 Sector 17",
+            city="Chandigarh",
+            postal_code="160017",
+            subtotal=1200.0,
+            delivery_fee=0.0,
+            total_amount=1200.0,
+            status="DELIVERED",
+        )
+        db.session.add(order)
+        db.session.commit()
+
+    res = client.patch(
+        "/api/admin/orders/ORD-CANCEL-DELIVERED/status",
+        headers=admin_headers,
+        json={"status": "CANCELLED"},
+    )
+    assert res.status_code == 400
+    err = res.get_json()["error"]
+    assert "Cannot transition order from 'DELIVERED'" in err
+
+
+def test_concurrent_cancellation_requests_prevent_duplicate_restoration(client, admin_headers, app):
+    """
+    Test 6: Concurrent cancellation requests must not cause duplicate inventory restoration.
+    Note on Environment Scope:
+      - In the local test suite (SQLite in-memory), this tests multi-request serialization,
+        atomicity, and status-check idempotency across concurrent client invocation.
+      - In PostgreSQL production, with_for_update() enforces row-level exclusive locking at the
+        database engine level, blocking concurrent transactions until the first transaction commits.
+    """
+    import concurrent.futures
+
+    with app.app_context():
+        product = Product(
+            name="Concurrent Item",
+            description="Testing concurrency safety",
+            category="Electronics",
+            price=1200.0,
+            stock_quantity=10,
+            image_path="https://example.com/item.jpg",
+            is_active=True,
+        )
+        db.session.add(product)
+        db.session.flush()
+
+        order = Order(
+            order_reference="ORD-CONCURRENT-CANCEL",
+            customer_name="Siddharth",
+            customer_email="sid@example.com",
+            customer_phone="9876543210",
+            delivery_address="77 MG Road",
+            city="Bengaluru",
+            postal_code="560001",
+            subtotal=2400.0,
+            delivery_fee=0.0,
+            total_amount=2400.0,
+            status="CONFIRMED",
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = OrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            product_name=product.name,
+            unit_price=product.price,
+            quantity=2,
+            line_total=2400.0,
+        )
+        db.session.add(item)
+        db.session.commit()
+        pid = product.id
+
+    def cancel_order():
+        return client.patch(
+            "/api/admin/orders/ORD-CONCURRENT-CANCEL/status",
+            headers=admin_headers,
+            json={"status": "CANCELLED"},
+        )
+
+    # Dispatch multiple concurrent requests
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(cancel_order) for _ in range(3)]
+        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+    # All requests should return HTTP 200 (one transitions, others are idempotent no-ops)
+    for res in results:
+        assert res.status_code == 200
+        assert res.get_json()["order"]["status"] == "CANCELLED"
+
+    # Stock MUST be restored exactly once (10 + 2 = 12, never 14 or 16)
+    with app.app_context():
+        p = db.session.get(Product, pid)
+        assert p.stock_quantity == 12
+
+
 def test_admin_password_rotation_invalidates_session(client, app, admin_user):
     """Test that rotating an administrator's password immediately invalidates active session tokens."""
     from rotate_admin_password import rotate_admin_password

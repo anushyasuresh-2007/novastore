@@ -1,3 +1,10 @@
+import os
+
+# Process-level test isolation:
+# Strip ambient host DATABASE_URL so test configuration is isolated from host environment.
+# Note: os.environ modification is strictly process-local and preserves Windows User/Machine environment variables.
+os.environ.pop("DATABASE_URL", None)
+
 import pytest
 from app import create_app
 from app.models.db import db
